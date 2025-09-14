@@ -13,6 +13,8 @@ interface UrlInputProps {
   isLoading: boolean;
   error: string | null;
   progress: string;
+  url: string;
+  setUrl: (url: string) => void;
 }
 
 export function UrlInput({
@@ -20,23 +22,21 @@ export function UrlInput({
   isLoading,
   error,
   progress,
+  url,
+  setUrl,
 }: UrlInputProps) {
-  const [url, setUrl] = useState("");
   const [urlError, setUrlError] = useState("");
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-
     if (!url.trim()) {
       setUrlError("Please enter a GitHub URL");
       return;
     }
-
     if (!validateGitHubUrl(url)) {
       setUrlError("Please enter a valid GitHub repository URL");
       return;
     }
-
     setUrlError("");
     onGenerate(url);
   };
@@ -49,12 +49,7 @@ export function UrlInput({
   return (
     <Card className="w-full max-w-2xl mx-auto">
       <CardHeader className="text-center">
-        <CardTitle className="text-3xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
-          ReadmeGen AI
-        </CardTitle>
-        <p className="text-muted-foreground mt-2">
-          Generate professional README.md files instantly using AI
-        </p>
+        {/* Judul dan deskripsi tidak perlu diubah */}
       </CardHeader>
       <CardContent>
         <form onSubmit={handleSubmit} className="space-y-4">

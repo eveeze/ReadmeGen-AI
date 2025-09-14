@@ -9,10 +9,12 @@
     "lint": "eslint"
   },
   "dependencies": {
+    "@vercel/kv": "^3.0.0",
     "axios": "^1.12.1",
     "clsx": "^2.1.1",
     "lucide-react": "^0.544.0",
     "next": "15.5.3",
+    "next-auth": "^4.24.11",
     "react": "19.1.0",
     "react-dom": "19.1.0",
     "react-markdown": "^10.1.0",

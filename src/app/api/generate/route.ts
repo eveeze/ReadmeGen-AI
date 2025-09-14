@@ -2,81 +2,73 @@ import { NextRequest, NextResponse } from "next/server";
 import { GitHubAnalyzer } from "@/lib/github";
 import { AIReadmeGenerator } from "@/lib/ai";
 import { extractGitHubInfo } from "@/lib/utils";
+import { kv } from "@vercel/kv";
+import { getServerSession } from "next-auth/next";
+import { authOptions } from "../auth/[...nextauth]/route";
+import { HistoryEntry } from "@/types";
 
 export async function POST(req: NextRequest) {
-  try {
-    console.log("API request received");
+  // Dapatkan sesi pengguna, ini tidak akan menghentikan pengguna anonim
+  const session = await getServerSession(authOptions);
 
+  try {
     const { url } = await req.json();
 
     if (!url) {
-      console.error("No URL provided in request");
       return NextResponse.json(
         { error: "GitHub URL is required" },
         { status: 400 }
       );
     }
 
-    console.log(`Processing URL: ${url}`);
-
     const repoInfo = extractGitHubInfo(url);
     if (!repoInfo) {
-      console.error(`Invalid GitHub URL format: ${url}`);
       return NextResponse.json(
-        {
-          error:
-            "Invalid GitHub URL format. Please provide a valid GitHub repository URL.",
-        },
+        { error: "Invalid GitHub URL format." },
         { status: 400 }
       );
     }
 
-    console.log(`Extracted repo info: ${repoInfo.owner}/${repoInfo.repo}`);
-
-    // Check for required environment variables
     const replicateToken = process.env.REPLICATE_API_TOKEN;
     const githubToken = process.env.GITHUB_TOKEN;
 
     if (!replicateToken) {
       console.error("REPLICATE_API_TOKEN not configured");
       return NextResponse.json(
-        {
-          error:
-            "AI service not configured. Please check environment variables.",
-        },
+        { error: "AI service not configured." },
         { status: 500 }
       );
     }
 
-    if (!githubToken) {
-      console.warn("GITHUB_TOKEN not provided - API rate limits will be lower");
-    } else {
-      console.log("GitHub token is configured");
-    }
-
     // Initialize services
-    console.log("Initializing GitHub analyzer and AI generator");
     const githubAnalyzer = new GitHubAnalyzer(githubToken);
     const aiGenerator = new AIReadmeGenerator(replicateToken);
 
     // Analyze the repository
-    console.log(
-      `Starting repository analysis for: ${repoInfo.owner}/${repoInfo.repo}`
-    );
     const analysis = await githubAnalyzer.analyzeProject(
       repoInfo.owner,
       repoInfo.repo
     );
 
-    console.log("Repository analysis completed, starting AI generation");
-
     // Generate README using AI
     const readmeContent = await aiGenerator.generateReadme(analysis);
 
-    console.log(
-      `README generated successfully (${readmeContent.length} characters)`
-    );
+    // Jika pengguna login, simpan hasilnya ke riwayat
+    if (session && session.user?.email) {
+      const historyKey = `history:${session.user.email}`;
+      const historyEntry: HistoryEntry = {
+        id: `${new Date().toISOString()}-${repoInfo.repo}`,
+        repoName: `${repoInfo.owner}/${repoInfo.repo}`,
+        repoUrl: url,
+        readme: readmeContent,
+        generatedAt: new Date().toISOString(),
+      };
 
+      await kv.lpush(historyKey, historyEntry);
+      await kv.ltrim(historyKey, 0, 9); // Simpan hanya 10 item terakhir
+    }
+
+    // Respon sukses tetap sama
     return NextResponse.json({
       success: true,
       readme: readmeContent,
@@ -90,15 +82,13 @@ export async function POST(req: NextRequest) {
       },
     });
   } catch (error) {
+    // Di sini kita menggunakan penanganan error detail dari kode asli Anda
     console.error("Generation error:", error);
-
     let errorMessage = "Failed to generate README";
     let statusCode = 500;
 
     if (error instanceof Error) {
       errorMessage = error.message;
-
-      // Handle specific error types with more granular status codes
       if (
         error.message.includes("not found") ||
         error.message.includes("private")
@@ -124,13 +114,6 @@ export async function POST(req: NextRequest) {
       } else if (error.message.includes("temporarily unavailable")) {
         statusCode = 503;
       }
-
-      // Log additional context for debugging
-      console.error("Error details:", {
-        message: error.message,
-        name: error.name,
-        stack: error.stack?.substring(0, 500),
-      });
     }
 
     return NextResponse.json(
@@ -146,6 +129,7 @@ export async function POST(req: NextRequest) {
   }
 }
 
+// Fungsi GET Anda tetap sama
 export async function GET() {
   return NextResponse.json(
     {

@@ -36,3 +36,17 @@ export interface GenerationState {
   error: string | null;
   progress: string;
 }
+
+export interface UserRepo {
+  id: number;
+  name: string;
+  url: string;
+}
+
+export interface HistoryEntry {
+  id: string;
+  repoName: string;
+  repoUrl: string;
+  readme: string;
+  generatedAt: string;
+}

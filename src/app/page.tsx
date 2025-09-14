@@ -2,12 +2,16 @@
 
 import { useState } from "react";
 import axios from "axios";
+import { useSession } from "next-auth/react";
 import { UrlInput } from "@/components/UrlInput";
+import { RepoSelector } from "@/components/RepoSelector";
 import { ReadmePreview } from "@/components/ReadmePreview";
 import { GenerationState } from "@/types";
 import { Github, Sparkles, FileText, Zap } from "lucide-react";
 
 export default function HomePage() {
+  const { status } = useSession();
+  const [url, setUrl] = useState("");
   const [generationState, setGenerationState] = useState<GenerationState>({
     isLoading: false,
     error: null,
@@ -15,33 +19,28 @@ export default function HomePage() {
   });
   const [generatedReadme, setGeneratedReadme] = useState<string>("");
 
-  const handleGenerate = async (url: string) => {
+  const handleGenerate = async (targetUrl: string) => {
+    if (!targetUrl.trim()) return;
+
     setGenerationState({
       isLoading: true,
       error: null,
       progress: "Analyzing repository...",
     });
-
     setGeneratedReadme("");
 
+    // Simulate progress dots
+    const progressInterval = setInterval(() => {
+      setGenerationState((prev) => {
+        if (prev.progress.endsWith("...")) {
+          return { ...prev, progress: prev.progress.slice(0, -3) };
+        }
+        return { ...prev, progress: prev.progress + "." };
+      });
+    }, 500);
+
     try {
-      // Simulate progress updates
-      setTimeout(() => {
-        setGenerationState((prev) => ({
-          ...prev,
-          progress: "Detecting frameworks and dependencies...",
-        }));
-      }, 1000);
-
-      setTimeout(() => {
-        setGenerationState((prev) => ({
-          ...prev,
-          progress: "Generating README with AI...",
-        }));
-      }, 2000);
-
-      const response = await axios.post("/api/generate", { url });
-
+      const response = await axios.post("/api/generate", { url: targetUrl });
       if (response.data.success) {
         setGeneratedReadme(response.data.readme);
         setGenerationState({
@@ -54,24 +53,23 @@ export default function HomePage() {
       }
     } catch (error) {
       let errorMessage = "An unexpected error occurred";
-
       if (axios.isAxiosError(error)) {
         errorMessage = error.response?.data?.error || error.message;
       } else if (error instanceof Error) {
         errorMessage = error.message;
       }
-
       setGenerationState({
         isLoading: false,
         error: errorMessage,
         progress: "",
       });
+    } finally {
+      clearInterval(progressInterval);
     }
   };
 
   return (
     <div className="container mx-auto px-4 py-8 max-w-6xl">
-      {/* Header */}
       <div className="text-center mb-12">
         <div className="flex items-center justify-center mb-6">
           <div className="p-3 bg-gradient-to-r from-blue-500 to-purple-600 rounded-full">
@@ -87,7 +85,6 @@ export default function HomePage() {
         </p>
       </div>
 
-      {/* Features */}
       <div className="grid md:grid-cols-3 gap-6 mb-12">
         <div className="bg-white/50 dark:bg-white/5 backdrop-blur-sm rounded-lg p-6 border border-white/20">
           <div className="flex items-center mb-3">
@@ -121,14 +118,24 @@ export default function HomePage() {
         </div>
       </div>
 
-      {/* Main Content */}
-      <div className="space-y-8">
+      <div className="space-y-6">
         <UrlInput
-          onGenerate={handleGenerate}
+          url={url}
+          setUrl={setUrl}
+          onGenerate={() => handleGenerate(url)}
           isLoading={generationState.isLoading}
           error={generationState.error}
           progress={generationState.progress}
         />
+
+        {status === "authenticated" && (
+          <div className="max-w-2xl mx-auto">
+            <RepoSelector
+              onSelect={setUrl}
+              disabled={generationState.isLoading}
+            />
+          </div>
+        )}
 
         {generatedReadme && (
           <div className="animate-slide-up">
@@ -137,12 +144,8 @@ export default function HomePage() {
         )}
       </div>
 
-      {/* Footer */}
       <footer className="mt-16 text-center text-sm text-muted-foreground">
         <p>Built with ❤️ using Next.js, IBM Granite AI, and GitHub API</p>
-        <p className="mt-2">
-          Open source • Save developer time • Improve documentation quality
-        </p>
       </footer>
     </div>
   );
