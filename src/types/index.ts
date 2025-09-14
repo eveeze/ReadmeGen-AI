@@ -22,6 +22,17 @@ export interface FileStructure {
 export interface CodeSnippet {
   fileName: string;
   content: string;
+  summary: string;
+}
+
+export interface ApiEndpoint {
+  path: string;
+  method: string;
+  description: string;
+}
+
+export interface EnvironmentVariable {
+  key: string;
 }
 
 export interface ProjectAnalysis {
@@ -34,7 +45,10 @@ export interface ProjectAnalysis {
   hasDocumentation: boolean;
   structure: FileStructure[];
   keyFiles: string[];
-  codeSnippets: CodeSnippet[];
+  fullFileTree: string;
+  summarizedCodeSnippets: CodeSnippet[];
+  apiEndpoints: ApiEndpoint[];
+  envVariables: EnvironmentVariable[];
 }
 
 export type ReadmeTemplate = "Dasar" | "Profesional" | "Fun/Creative";

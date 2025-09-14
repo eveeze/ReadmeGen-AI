@@ -4,6 +4,8 @@ import {
   FileStructure,
   ProjectAnalysis,
   CodeSnippet,
+  ApiEndpoint,
+  EnvironmentVariable,
 } from "@/types";
 
 const GITHUB_API_BASE = "https://api.github.com";
@@ -112,6 +114,8 @@ export class GitHubAnalyzer {
       const errorMessage =
         typeof error === "object" && error !== null && "message" in error
           ? (error as { message?: string }).message
+            ? String((error as { message: string }).message)
+            : "Unknown error"
           : String(error);
       throw new Error(
         `Failed to fetch repository information: ${errorMessage}`
@@ -211,42 +215,95 @@ export class GitHubAnalyzer {
     }
   }
 
+  private async generateFileTree(owner: string, repo: string): Promise<string> {
+    try {
+      console.log(`Generating file tree for: ${owner}/${repo}`);
+      const response = await axios.get(
+        `${GITHUB_API_BASE}/repos/${owner}/${repo}/git/trees/main?recursive=1`,
+        {
+          headers: this.getHeaders(),
+        }
+      );
+
+      const ignoredDirs = [".git", "node_modules", ".next", "dist", "build"];
+      const tree = response.data.tree
+        .map((node: { path: string }) => node.path)
+        .filter(
+          (path: string) => !ignoredDirs.some((dir) => path.startsWith(dir))
+        )
+        .join("\n");
+      return tree;
+    } catch (error) {
+      console.warn("Could not fetch recursive file tree.", error);
+      return "File tree not available.";
+    }
+  }
+
+  private async analyzeEnvFile(
+    owner: string,
+    repo: string
+  ): Promise<EnvironmentVariable[]> {
+    const content = await this.getFileContent(owner, repo, ".env.example");
+    if (!content) return [];
+
+    return content
+      .split("\n")
+      .filter((line) => line.trim() !== "" && !line.startsWith("#"))
+      .map((line) => ({ key: line.split("=")[0] }));
+  }
+
+  private analyzeApiRoutes(structure: FileStructure[]): ApiEndpoint[] {
+    const apiFiles = structure.filter(
+      (file) =>
+        file.type === "file" &&
+        (file.path.startsWith("src/app/api/") ||
+          file.path.startsWith("src/pages/api/"))
+    );
+
+    return apiFiles.map((file) => {
+      const parts = file.path.split("/");
+      // A simple heuristic to determine method from filename, e.g. `route.ts` -> GET, POST etc.
+      // or from folder structure for more complex routing.
+      const method = "GET/POST"; // Placeholder
+      return {
+        path: `/api/${parts.slice(3, -1).join("/")}`,
+        method,
+        description: "", // To be filled by AI
+      };
+    });
+  }
+
   private async analyzeCode(
     owner: string,
     repo: string,
     structure: FileStructure[]
   ): Promise<CodeSnippet[]> {
     const codeSnippets: CodeSnippet[] = [];
-    const keySourceFiles = [
-      "src/index.js",
-      "src/index.ts",
-      "src/main.js",
-      "src/main.ts",
-      "src/app.js",
-      "src/app.ts",
-      "main.py",
-      "app.py",
+    const priorityFiles = [
+      "src/app/page.tsx",
+      "src/components/Header.tsx",
+      "next.config.ts",
+      "src/lib/ai.ts",
+      "src/lib/github.ts",
+      "package.json",
     ];
 
-    const filesToAnalyze = structure.filter(
-      (file) =>
-        file.type === "file" &&
-        (keySourceFiles.includes(file.path) ||
-          file.path.startsWith("src/api/") ||
-          file.path.startsWith("src/controllers/"))
-    );
+    const filesToAnalyze = structure
+      .filter(
+        (file) => file.type === "file" && priorityFiles.includes(file.path)
+      )
+      .slice(0, 7); // Limit to 5-7 files
 
-    for (const file of filesToAnalyze.slice(0, 3)) {
-      // Limit to 3 files to avoid excessive API calls
+    for (const file of filesToAnalyze) {
       const content = await this.getFileContent(owner, repo, file.path);
       if (content) {
         codeSnippets.push({
           fileName: file.path,
-          content: content.slice(0, 1000), // Truncate content
+          content: content,
+          summary: "Awaiting AI summary",
         });
       }
     }
-
     return codeSnippets;
   }
 
@@ -259,8 +316,17 @@ export class GitHubAnalyzer {
     const structure = await this.getFileStructure(owner, repo);
     console.log(`File structure fetched: ${structure.length} items`);
 
-    const codeSnippets = await this.analyzeCode(owner, repo, structure);
-    console.log(`Code snippets fetched: ${codeSnippets.length} files`);
+    const [fullFileTree, envVariables, apiEndpoints, summarizedCodeSnippets] =
+      await Promise.all([
+        this.generateFileTree(owner, repo),
+        this.analyzeEnvFile(owner, repo),
+        this.analyzeApiRoutes(structure),
+        this.analyzeCode(owner, repo, structure),
+      ]);
+    console.log(`Full file tree generated.`);
+    console.log(`Found ${envVariables.length} environment variables.`);
+    console.log(`Found ${apiEndpoints.length} API endpoints.`);
+    console.log(`Summarized ${summarizedCodeSnippets.length} code snippets.`);
 
     const keyFiles = structure
       .filter((file) => file.type === "file")
@@ -345,7 +411,7 @@ export class GitHubAnalyzer {
               : "latest";
             return acc;
           }, {} as Record<string, string>);
-        dependencies = deps;
+        dependencies = { ...dependencies, ...deps };
 
         if (deps["django"]) frameworks.push("Django");
         if (deps["flask"]) frameworks.push("Flask");
@@ -372,7 +438,7 @@ export class GitHubAnalyzer {
       frameworks.push("Go");
     }
 
-    const analysis = {
+    const analysis: ProjectAnalysis = {
       repository,
       mainLanguage: repository.language,
       frameworks,
@@ -382,7 +448,10 @@ export class GitHubAnalyzer {
       hasDocumentation: keyFiles.includes("readme.md"),
       structure,
       keyFiles,
-      codeSnippets,
+      fullFileTree,
+      summarizedCodeSnippets,
+      apiEndpoints,
+      envVariables,
     };
 
     console.log(`Project analysis completed for: ${owner}/${repo}`);

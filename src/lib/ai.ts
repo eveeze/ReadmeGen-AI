@@ -1,5 +1,10 @@
 import Replicate from "replicate";
-import { ProjectAnalysis, ReadmeTemplate, GitHubRepo } from "@/types";
+import {
+  ProjectAnalysis,
+  ReadmeTemplate,
+  GitHubRepo,
+  CodeSnippet,
+} from "@/types";
 
 export class AIReadmeGenerator {
   private replicate: Replicate;
@@ -22,7 +27,10 @@ export class AIReadmeGenerator {
       dependencies,
       scripts,
       keyFiles,
-      codeSnippets,
+      summarizedCodeSnippets, // Perbaikan: Menggunakan nama properti yang baru
+      fullFileTree,
+      apiEndpoints,
+      envVariables,
     } = analysis;
 
     let styleGuidance = "";
@@ -42,78 +50,105 @@ export class AIReadmeGenerator {
         break;
     }
 
-    return `Generate a comprehensive, professional README.md for this GitHub repository.
+    // Prompt yang disempurnakan dengan data analisis yang lebih kaya
+    return `Generate a comprehensive, professional README.md for a GitHub repository.
 Style Guidance: ${styleGuidance}
 
-REPOSITORY INFORMATION:
+**1. REPOSITORY INFORMATION:**
 - Name: ${repository.name}
-- Description: ${repository.description}
+- Description: ${repository.description || "No description provided."}
 - Main Language: ${mainLanguage}
-- Stars: ${repository.stars}
-- Forks: ${repository.forks}
-- Topics: ${repository.topics.join(", ")}
+- Topics: ${repository.topics.join(", ") || "None"}
 - License: ${repository.license?.name || "Not specified"}
 
-PROJECT ANALYSIS:
-- Frameworks detected: ${frameworks.join(", ") || "None detected"}
-- Package managers: ${packageManagers.join(", ") || "None detected"}
-- Key files found: ${keyFiles.join(", ")}
+**2. DETAILED PROJECT ANALYSIS:**
+- **Frameworks & Key Libraries:** ${frameworks.join(", ") || "None detected"}
+- **Package Managers:** ${packageManagers.join(", ") || "None detected"}
+- **Key Configuration & Documentation Files:** ${keyFiles.join(", ")}
+- **Required Environment Variables (.env.example):** ${
+      envVariables.length > 0
+        ? envVariables.map((v) => v.key).join(", ")
+        : "None specified"
+    }
+- **Detected API Endpoints:** ${
+      apiEndpoints.length > 0
+        ? apiEndpoints.map((e) => `${e.method} ${e.path}`).join("\n")
+        : "None detected"
+    }
+
+**3. FULL FILE TREE:**
+\`\`\`
+${fullFileTree}
+\`\`\`
+
+**4. SUMMARIZED CODE SNIPPETS:**
 ${
-  codeSnippets.length > 0
-    ? `
-CODE SNIPPETS ANALYSIS:
-${codeSnippets
-  .map(
-    (snippet) =>
-      `---
+  summarizedCodeSnippets.length > 0
+    ? summarizedCodeSnippets
+        .map(
+          (snippet: CodeSnippet) =>
+            `---
 File: ${snippet.fileName}
+Content Summary: The AI should infer the purpose of this file from its content.
 Content:
+\`\`\`${mainLanguage.toLowerCase()}
 ${snippet.content}
+\`\`\`
 ---`
-  )
-  .join("\n")}
-Based on these snippets, infer the main functionalities of the project.
-`
-    : ""
+        )
+        .join("\n")
+    : "No key code snippets were analyzed."
 }
 
-DEPENDENCIES (top 10):
-${Object.entries(dependencies)
-  .slice(0, 10)
-  .map(([pkg, version]) => `- ${pkg}: ${version}`)
-  .join("\n")}
+**5. DEPENDENCIES & SCRIPTS:**
+- **Key Dependencies (up to 10):**
+${
+  Object.keys(dependencies).length > 0
+    ? Object.entries(dependencies)
+        .slice(0, 10)
+        .map(([pkg, version]) => `  - ${pkg}: ${version}`)
+        .join("\n")
+    : "  - None"
+}
+- **Available Scripts:**
+${
+  Object.keys(scripts).length > 0
+    ? Object.entries(scripts)
+        .map(([name, command]) => `  - ${name}: "${command}"`)
+        .join("\n")
+    : "  - None"
+}
 
-AVAILABLE SCRIPTS:
-${Object.entries(scripts)
-  .map(([name, command]) => `- ${name}: ${command}`)
-  .join("\n")}
+**TASK:**
+Based on ALL the information above (especially the file tree and code snippets), generate a high-quality README.md. Infer the project's purpose and features. Include these sections:
+1.  Project Title and a compelling one-line description.
+2.  Features (in a bulleted list).
+3.  Tech Stack/Technologies Used.
+4.  Architecture Overview (briefly explain the structure based on the file tree).
+5.  Prerequisites and Installation steps (mention the environment variables).
+6.  Usage/Running the Project (explain the main scripts).
+7.  API Endpoints (if any were detected).
+8.  Contributing guidelines.
+9.  License information.
 
-Generate a README.md that includes:
-1.  Project title and description
-2.  Features section (infer from dependencies, structure, and code snippets)
-3.  Installation instructions
-4.  Usage examples
-5.  Contributing guidelines
-6.  License information
-
-Generate ONLY the README.md content, no additional commentary.`;
+Generate ONLY the README.md content itself. Do not add any extra commentary before or after the markdown.`;
   }
 
   private createArchitecturePrompt(analysis: ProjectAnalysis): string {
-    const { structure } = analysis;
+    const { fullFileTree } = analysis; // Menggunakan fullFileTree untuk konteks yang lebih baik
     return `Based on the following file structure, generate a simple architecture diagram in Mermaid.js syntax.
 Focus ONLY on the main components and their relationships. Use a 'graph TD' (top-down) layout.
 
 File Structure:
-${structure.map((item) => `- ${item.path} (${item.type})`).join("\n")}
+${fullFileTree}
 
 IMPORTANT: Generate ONLY the Mermaid.js syntax inside a markdown code block. Do NOT include any other text or explanation.
 Example of a valid response:
 \`\`\`mermaid
 graph TD;
-    A["User"] --> B["Web App"];
-    B --> C{"API Server"};
-    C --> D[("Database")];
+    A["User"] --> B["Web App (Next.js)"];
+    B --> C{"API Routes (/api/*)"};
+    C --> D[("Database/External Service")];
 \`\`\``;
   }
 
@@ -128,7 +163,7 @@ graph TD;
       let readmeContent = "";
       const input = {
         prompt: prompt,
-        max_tokens: 2500,
+        max_tokens: 8192, // Menaikkan token untuk output yang lebih panjang dan lengkap
         temperature: 0.7,
         top_p: 0.9,
         top_k: 50,
@@ -229,6 +264,7 @@ graph TD;
     }
   }
 
+  // Fallback methods remain the same
   private generateFallbackReadme(analysis: ProjectAnalysis): string {
     const {
       repository,
