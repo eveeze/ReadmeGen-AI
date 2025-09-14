@@ -140,12 +140,19 @@ export class GitHubAnalyzer {
         return [];
       }
 
-      return response.data.map((item: any) => ({
-        name: item.name,
-        path: item.path,
-        type: item.type === "dir" ? "dir" : "file",
-        size: item.size,
-      }));
+      return response.data.map(
+        (item: {
+          name: string;
+          path: string;
+          type: "dir" | "file";
+          size: number;
+        }) => ({
+          name: item.name,
+          path: item.path,
+          type: item.type === "dir" ? "dir" : "file",
+          size: item.size,
+        })
+      );
     } catch (error) {
       if (axios.isAxiosError(error)) {
         const status = error.response?.status;

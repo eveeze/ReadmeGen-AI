@@ -1,5 +1,6 @@
 import Replicate from "replicate";
 import { ProjectAnalysis } from "@/types";
+import { GitHubRepo } from "@/types"; // Pastikan ini di-import di bagian atas
 
 export class AIReadmeGenerator {
   private replicate: Replicate;
@@ -278,7 +279,7 @@ ${
 Made with ❤️ by the development team`;
   }
 
-  private generateBadges(repository: any, language: string): string {
+  private generateBadges(repository: GitHubRepo, language: string): string {
     const badges = [
       `![GitHub stars](https://img.shields.io/github/stars/${repository.html_url
         .split("/")

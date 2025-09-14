@@ -1,6 +1,6 @@
+// src/app/api/auth/[...nextauth]/route.ts
 import NextAuth, { AuthOptions } from "next-auth";
 import GitHubProvider from "next-auth/providers/github";
-import { NextApiRequest, NextApiResponse } from "next";
 
 export const authOptions: AuthOptions = {
   providers: [
@@ -21,8 +21,10 @@ export const authOptions: AuthOptions = {
       return token;
     },
     async session({ session, token }) {
+      // Menambahkan tipe spesifik untuk menghindari 'any'
       if (session?.user) {
-        (session as any).accessToken = token.accessToken;
+        (session as { accessToken?: string }).accessToken =
+          token.accessToken as string;
       }
       return session;
     },
