@@ -6,13 +6,21 @@ import { useSession } from "next-auth/react";
 import { UrlInput } from "@/components/UrlInput";
 import { RepoSelector } from "@/components/RepoSelector";
 import { ReadmePreview } from "@/components/ReadmePreview";
-import { GenerationState, ReadmeTemplate } from "@/types";
+import { BadgeGenerator } from "@/components/BadgeGenerator";
+import {
+  GenerationState,
+  ReadmeTemplate,
+  ReadmeLanguage,
+  Badge,
+} from "@/types";
 import { Github, Sparkles, FileText, Zap } from "lucide-react";
 
 export default function HomePage() {
   const { status } = useSession();
   const [url, setUrl] = useState("");
   const [template, setTemplate] = useState<ReadmeTemplate>("Profesional");
+  const [language, setLanguage] = useState<ReadmeLanguage>("English");
+  const [badges, setBadges] = useState<Badge[]>([]);
   const [generationState, setGenerationState] = useState<GenerationState>({
     isLoading: false,
     error: null,
@@ -30,22 +38,16 @@ export default function HomePage() {
     });
     setGeneratedReadme("");
 
-    const progressInterval = setInterval(() => {
-      setGenerationState((prev) => {
-        if (prev.progress.endsWith("...")) {
-          return { ...prev, progress: prev.progress.slice(0, -3) };
-        }
-        return { ...prev, progress: prev.progress + "." };
-      });
-    }, 500);
-
     try {
       const response = await axios.post("/api/generate", {
         url: targetUrl,
-        template: template,
+        template,
+        language,
+        badges,
       });
       if (response.data.success) {
         setGeneratedReadme(response.data.readme);
+        setBadges(response.data.analysis.badges);
         setGenerationState({
           isLoading: false,
           error: null,
@@ -54,20 +56,16 @@ export default function HomePage() {
       } else {
         throw new Error(response.data.error || "Failed to generate README");
       }
-    } catch (error) {
-      let errorMessage = "An unexpected error occurred";
-      if (axios.isAxiosError(error)) {
-        errorMessage = error.response?.data?.error || error.message;
-      } else if (error instanceof Error) {
-        errorMessage = error.message;
-      }
+    } catch (error: any) {
+      const errorMessage =
+        error.response?.data?.error ||
+        error.message ||
+        "An unexpected error occurred";
       setGenerationState({
         isLoading: false,
         error: errorMessage,
         progress: "",
       });
-    } finally {
-      clearInterval(progressInterval);
     }
   };
 
@@ -87,40 +85,6 @@ export default function HomePage() {
           README files in seconds
         </p>
       </div>
-
-      <div className="grid md:grid-cols-3 gap-6 mb-12">
-        <div className="bg-white/50 dark:bg-white/5 backdrop-blur-sm rounded-lg p-6 border border-white/20">
-          <div className="flex items-center mb-3">
-            <Github className="w-6 h-6 text-blue-600 mr-2" />
-            <h3 className="font-semibold">Smart Analysis</h3>
-          </div>
-          <p className="text-sm text-muted-foreground">
-            Automatically detects frameworks, dependencies, and project
-            structure
-          </p>
-        </div>
-
-        <div className="bg-white/50 dark:bg-white/5 backdrop-blur-sm rounded-lg p-6 border border-white/20">
-          <div className="flex items-center mb-3">
-            <Sparkles className="w-6 h-6 text-purple-600 mr-2" />
-            <h3 className="font-semibold">AI-Powered</h3>
-          </div>
-          <p className="text-sm text-muted-foreground">
-            Leverages IBM Granite AI for intelligent content generation
-          </p>
-        </div>
-
-        <div className="bg-white/50 dark:bg-white/5 backdrop-blur-sm rounded-lg p-6 border border-white/20">
-          <div className="flex items-center mb-3">
-            <Zap className="w-6 h-6 text-indigo-600 mr-2" />
-            <h3 className="font-semibold">Lightning Fast</h3>
-          </div>
-          <p className="text-sm text-muted-foreground">
-            Generate comprehensive documentation in under 30 seconds
-          </p>
-        </div>
-      </div>
-
       <div className="space-y-6">
         <UrlInput
           url={url}
@@ -130,24 +94,41 @@ export default function HomePage() {
           error={generationState.error}
           progress={generationState.progress}
         />
-
-        <div className="max-w-2xl mx-auto">
-          <label htmlFor="template-selector" className="text-sm font-medium">
-            Pilih Template
-          </label>
-          <select
-            id="template-selector"
-            value={template}
-            onChange={(e) => setTemplate(e.target.value as ReadmeTemplate)}
-            disabled={generationState.isLoading}
-            className="mt-2 flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            <option value="Profesional">Profesional</option>
-            <option value="Dasar">Dasar</option>
-            <option value="Fun/Creative">Fun/Creative</option>
-          </select>
+        <div className="max-w-2xl mx-auto grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div>
+            <label htmlFor="template-selector" className="text-sm font-medium">
+              Choose Template
+            </label>
+            <select
+              id="template-selector"
+              value={template}
+              onChange={(e) => setTemplate(e.target.value as ReadmeTemplate)}
+              disabled={generationState.isLoading}
+              className="mt-2 flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background"
+            >
+              <option value="Profesional">Professional</option>
+              <option value="Dasar">Basic</option>
+              <option value="Fun/Creative">Fun/Creative</option>
+            </select>
+          </div>
+          <div>
+            <label htmlFor="language-selector" className="text-sm font-medium">
+              Output Language
+            </label>
+            <select
+              id="language-selector"
+              value={language}
+              onChange={(e) => setLanguage(e.target.value as ReadmeLanguage)}
+              disabled={generationState.isLoading}
+              className="mt-2 flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background"
+            >
+              <option value="English">English</option>
+              <option value="Indonesian">Indonesian</option>
+              <option value="Spanish">Spanish</option>
+              <option value="Mandarin">Mandarin</option>
+            </select>
+          </div>
         </div>
-
         {status === "authenticated" && (
           <div className="max-w-2xl mx-auto">
             <RepoSelector
@@ -156,17 +137,15 @@ export default function HomePage() {
             />
           </div>
         )}
-
+        <div className="max-w-2xl mx-auto">
+          <BadgeGenerator badges={badges} setBadges={setBadges} />
+        </div>
         {generatedReadme && (
           <div className="animate-slide-up">
             <ReadmePreview content={generatedReadme} />
           </div>
         )}
       </div>
-
-      <footer className="mt-16 text-center text-sm text-muted-foreground">
-        <p>Built with ❤️ using Next.js, IBM Granite AI, and GitHub API</p>
-      </footer>
     </div>
   );
 }

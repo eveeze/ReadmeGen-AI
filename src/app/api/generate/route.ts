@@ -5,14 +5,24 @@ import { extractGitHubInfo } from "@/lib/utils";
 import { kv } from "@vercel/kv";
 import { getServerSession } from "next-auth/next";
 import { authOptions } from "../auth/[...nextauth]/route";
-import { HistoryEntry, ReadmeTemplate } from "@/types";
+import { HistoryEntry, ReadmeTemplate, ReadmeLanguage, Badge } from "@/types";
 
 export async function POST(req: NextRequest) {
   const session = await getServerSession(authOptions);
 
   try {
-    const { url, template }: { url: string; template: ReadmeTemplate } =
-      await req.json();
+    // Memperbarui destrukturisasi untuk menerima language dan badges
+    const {
+      url,
+      template,
+      language,
+      badges,
+    }: {
+      url: string;
+      template: ReadmeTemplate;
+      language: ReadmeLanguage;
+      badges: Badge[];
+    } = await req.json();
 
     if (!url) {
       return NextResponse.json(
@@ -48,8 +58,9 @@ export async function POST(req: NextRequest) {
       repoInfo.repo
     );
 
+    // Memperbarui pemanggilan generateReadme untuk menyertakan language dan badges
     const [readmeContent, architectureDiagram] = await Promise.all([
-      aiGenerator.generateReadme(analysis, template),
+      aiGenerator.generateReadme(analysis, template, language, badges),
       aiGenerator.generateArchitectureDiagram(analysis),
     ]);
 
@@ -73,12 +84,14 @@ export async function POST(req: NextRequest) {
       success: true,
       readme: finalReadme,
       analysis: {
+        // Mengirim kembali seluruh analisis, termasuk badge yang dibuat otomatis
         repository: analysis.repository,
         mainLanguage: analysis.mainLanguage,
         frameworks: analysis.frameworks,
         packageManagers: analysis.packageManagers,
         hasDocumentation: analysis.hasDocumentation,
         keyFiles: analysis.keyFiles,
+        badges: analysis.badges, // Mengirim kembali badge yang dibuat otomatis
       },
     });
   } catch (error) {

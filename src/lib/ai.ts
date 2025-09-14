@@ -4,6 +4,8 @@ import {
   ReadmeTemplate,
   GitHubRepo,
   CodeSnippet,
+  ReadmeLanguage,
+  Badge,
 } from "@/types";
 
 export class AIReadmeGenerator {
@@ -15,9 +17,12 @@ export class AIReadmeGenerator {
     });
   }
 
+  // --- FUNGSI INI YANG DIPERBAIKI ---
   private createPrompt(
     analysis: ProjectAnalysis,
-    template: ReadmeTemplate
+    template: ReadmeTemplate,
+    language: ReadmeLanguage,
+    customBadges: Badge[]
   ): string {
     const {
       repository,
@@ -27,11 +32,21 @@ export class AIReadmeGenerator {
       dependencies,
       scripts,
       keyFiles,
-      summarizedCodeSnippets, // Perbaikan: Menggunakan nama properti yang baru
+      summarizedCodeSnippets,
       fullFileTree,
       apiEndpoints,
       envVariables,
     } = analysis;
+
+    // Menggabungkan badge otomatis dari analisis dan badge kustom dari pengguna
+    const allBadges = [...analysis.badges, ...customBadges];
+    // Membuat blok markdown lengkap untuk semua badge
+    const badgeMarkdown = allBadges
+      .map(
+        (badge) =>
+          `[![${badge.name}](${badge.url})](${badge.link || badge.url})`
+      )
+      .join(" ");
 
     let styleGuidance = "";
     switch (template) {
@@ -50,8 +65,7 @@ export class AIReadmeGenerator {
         break;
     }
 
-    // Prompt yang disempurnakan dengan data analisis yang lebih kaya
-    return `Generate a comprehensive, professional README.md for a GitHub repository.
+    return `Generate a comprehensive, professional README.md for a GitHub repository in ${language}.
 Style Guidance: ${styleGuidance}
 
 **1. REPOSITORY INFORMATION:**
@@ -64,8 +78,7 @@ Style Guidance: ${styleGuidance}
 **2. DETAILED PROJECT ANALYSIS:**
 - **Frameworks & Key Libraries:** ${frameworks.join(", ") || "None detected"}
 - **Package Managers:** ${packageManagers.join(", ") || "None detected"}
-- **Key Configuration & Documentation Files:** ${keyFiles.join(", ")}
-- **Required Environment Variables (.env.example):** ${
+- **Required Environment Variables:** ${
       envVariables.length > 0
         ? envVariables.map((v) => v.key).join(", ")
         : "None specified"
@@ -89,10 +102,9 @@ ${
           (snippet: CodeSnippet) =>
             `---
 File: ${snippet.fileName}
-Content Summary: The AI should infer the purpose of this file from its content.
 Content:
 \`\`\`${mainLanguage.toLowerCase()}
-${snippet.content}
+${snippet.content.slice(0, 500)}...
 \`\`\`
 ---`
         )
@@ -101,69 +113,59 @@ ${snippet.content}
 }
 
 **5. DEPENDENCIES & SCRIPTS:**
-- **Key Dependencies (up to 10):**
-${
-  Object.keys(dependencies).length > 0
-    ? Object.entries(dependencies)
-        .slice(0, 10)
-        .map(([pkg, version]) => `  - ${pkg}: ${version}`)
-        .join("\n")
-    : "  - None"
-}
-- **Available Scripts:**
-${
-  Object.keys(scripts).length > 0
-    ? Object.entries(scripts)
-        .map(([name, command]) => `  - ${name}: "${command}"`)
-        .join("\n")
-    : "  - None"
-}
+- **Key Dependencies:** ${
+      Object.keys(dependencies).slice(0, 10).join(", ") || "None"
+    }
+- **Available Scripts:** ${Object.keys(scripts).join(", ") || "None"}
 
 **TASK:**
-Based on ALL the information above (especially the file tree and code snippets), generate a high-quality README.md. Infer the project's purpose and features. Include these sections:
+Based on ALL the information above, generate a high-quality README.md in ${language}. Infer the project's purpose and features. Include these sections:
 1.  Project Title and a compelling one-line description.
-2.  Features (in a bulleted list).
-3.  Tech Stack/Technologies Used.
-4.  Architecture Overview (briefly explain the structure based on the file tree).
-5.  Prerequisites and Installation steps (mention the environment variables).
-6.  Usage/Running the Project (explain the main scripts).
-7.  API Endpoints (if any were detected).
-8.  Contributing guidelines.
-9.  License information.
+2.  Badges Section (Use this exact markdown block for the badges): ${badgeMarkdown}
+3.  Features (in a bulleted list).
+4.  Tech Stack/Technologies Used.
+5.  Architecture Overview (briefly explain the structure based on the file tree).
+6.  Prerequisites and Installation steps.
+7.  Usage/Running the Project (explain the main scripts).
+8.  API Endpoints (if any were detected).
+9.  Contributing guidelines.
+10. License information.
 
 Generate ONLY the README.md content itself. Do not add any extra commentary before or after the markdown.`;
   }
 
   private createArchitecturePrompt(analysis: ProjectAnalysis): string {
-    const { fullFileTree } = analysis; // Menggunakan fullFileTree untuk konteks yang lebih baik
+    const { fullFileTree } = analysis;
     return `Based on the following file structure, generate a simple architecture diagram in Mermaid.js syntax.
 Focus ONLY on the main components and their relationships. Use a 'graph TD' (top-down) layout.
 
 File Structure:
 ${fullFileTree}
 
-IMPORTANT: Generate ONLY the Mermaid.js syntax inside a markdown code block. Do NOT include any other text or explanation.
-Example of a valid response:
-\`\`\`mermaid
-graph TD;
-    A["User"] --> B["Web App (Next.js)"];
-    B --> C{"API Routes (/api/*)"};
-    C --> D[("Database/External Service")];
-\`\`\``;
+IMPORTANT: Generate ONLY the Mermaid.js syntax inside a markdown code block. Do NOT include any other text or explanation.`;
   }
 
   async generateReadme(
     analysis: ProjectAnalysis,
-    template: ReadmeTemplate
+    template: ReadmeTemplate,
+    language: ReadmeLanguage,
+    customBadges: Badge[]
   ): Promise<string> {
     try {
-      const prompt = this.createPrompt(analysis, template);
-      console.log(`Starting AI generation with template: ${template}`);
+      const prompt = this.createPrompt(
+        analysis,
+        template,
+        language,
+        customBadges
+      );
+      console.log(
+        `Starting AI generation with template: ${template} in ${language}`
+      );
 
       let readmeContent = "";
       const input = {
         prompt: prompt,
-        max_tokens: 8192, // Menaikkan token untuk output yang lebih panjang dan lengkap
+        max_tokens: 8192,
         temperature: 0.7,
         top_p: 0.9,
         top_k: 50,
@@ -174,11 +176,7 @@ graph TD;
         "ibm-granite/granite-3.3-8b-instruct",
         { input }
       )) {
-        if (typeof event === "string") {
-          readmeContent += event;
-        } else {
-          readmeContent += String(event);
-        }
+        readmeContent += String(event);
       }
 
       console.log(
@@ -248,7 +246,6 @@ graph TD;
         ? output.join("")
         : String(output);
 
-      // Simple validation: check if the output contains the mermaid block
       if (diagramContent.includes("```mermaid")) {
         console.log("Architecture diagram generation completed.");
         return diagramContent.trim();
@@ -260,11 +257,10 @@ graph TD;
       }
     } catch (error) {
       console.error("Failed to generate architecture diagram:", error);
-      return ""; // Return empty string on error
+      return "";
     }
   }
 
-  // Fallback methods remain the same
   private generateFallbackReadme(analysis: ProjectAnalysis): string {
     const {
       repository,
@@ -356,28 +352,27 @@ Made with ❤️ by the development team`;
   }
 
   private generateBadges(repository: GitHubRepo, language: string): string {
+    const repoPath = new URL(repository.html_url).pathname.substring(1);
     const badges = [
-      `![GitHub stars](https://img.shields.io/github/stars/${repository.html_url
-        .split("/")
-        .slice(-2)
-        .join("/")}?style=social)`,
-      `![GitHub forks](https://img.shields.io/github/forks/${repository.html_url
-        .split("/")
-        .slice(-2)
-        .join("/")}?style=social)`,
-      `![GitHub license](https://img.shields.io/github/license/${repository.html_url
-        .split("/")
-        .slice(-2)
-        .join("/")})`,
+      `![GitHub stars](https://img.shields.io/github/stars/${repoPath}?style=social)`,
+      `![GitHub forks](https://img.shields.io/github/forks/${repoPath}?style=social)`,
     ];
 
-    if (language) {
+    if (repository.license) {
       badges.push(
-        `![Language](https://img.shields.io/badge/language-${language}-blue)`
+        `![GitHub license](https://img.shields.io/github/license/${repoPath})`
       );
     }
 
-    return badges.join("\n");
+    if (language) {
+      badges.push(
+        `![Language](https://img.shields.io/badge/language-${encodeURIComponent(
+          language
+        )}-blue)`
+      );
+    }
+
+    return badges.join(" ");
   }
 
   private generateFeaturesSection(

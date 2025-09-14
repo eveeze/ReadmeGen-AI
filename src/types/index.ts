@@ -35,6 +35,12 @@ export interface EnvironmentVariable {
   key: string;
 }
 
+export interface Badge {
+  name: string;
+  url: string;
+  link?: string;
+}
+
 export interface ProjectAnalysis {
   repository: GitHubRepo;
   mainLanguage: string;
@@ -49,9 +55,11 @@ export interface ProjectAnalysis {
   summarizedCodeSnippets: CodeSnippet[];
   apiEndpoints: ApiEndpoint[];
   envVariables: EnvironmentVariable[];
+  badges: Badge[];
 }
 
 export type ReadmeTemplate = "Dasar" | "Profesional" | "Fun/Creative";
+export type ReadmeLanguage = "English" | "Indonesian" | "Spanish" | "Mandarin";
 
 export interface GenerationState {
   isLoading: boolean;
