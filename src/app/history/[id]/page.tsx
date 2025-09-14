@@ -8,13 +8,21 @@ import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { ArrowLeft } from "lucide-react";
 
-async function HistoryDetailPage({ params }: { params: { id: string } }) {
+async function HistoryDetailPage({
+  params,
+}: {
+  params: Promise<{ id: string }>;
+}) {
+  // 1. Await 'params' untuk mendapatkan nilainya
+  const { id } = await params;
+
   const session = await getServerSession(authOptions);
   if (!session || !session.user?.email) {
     redirect("/api/auth/signin");
   }
 
-  const decodedId = decodeURIComponent(params.id);
+  // 2. Gunakan 'id' yang sudah di-await
+  const decodedId = decodeURIComponent(id);
   const historyKey = `history:${session.user.email}`;
   const historyItems = await kv.lrange<HistoryEntry>(historyKey, 0, -1);
   const item = historyItems.find((h) => h.id === decodedId);
