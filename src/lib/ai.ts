@@ -1,6 +1,5 @@
 import Replicate from "replicate";
-import { ProjectAnalysis } from "@/types";
-import { GitHubRepo } from "@/types"; // Pastikan ini di-import di bagian atas
+import { ProjectAnalysis, ReadmeTemplate, GitHubRepo } from "@/types";
 
 export class AIReadmeGenerator {
   private replicate: Replicate;
@@ -11,7 +10,10 @@ export class AIReadmeGenerator {
     });
   }
 
-  private createPrompt(analysis: ProjectAnalysis): string {
+  private createPrompt(
+    analysis: ProjectAnalysis,
+    template: ReadmeTemplate
+  ): string {
     const {
       repository,
       mainLanguage,
@@ -20,9 +22,28 @@ export class AIReadmeGenerator {
       dependencies,
       scripts,
       keyFiles,
+      codeSnippets,
     } = analysis;
 
-    return `Generate a comprehensive, professional README.md for this GitHub repository. Based on the analysis below, create a well-structured documentation that follows best practices.
+    let styleGuidance = "";
+    switch (template) {
+      case "Profesional":
+        styleGuidance =
+          "Use a formal and professional tone. Focus on clarity, structure, and comprehensive documentation.";
+        break;
+      case "Fun/Creative":
+        styleGuidance =
+          "Use a more casual, engaging, and creative tone. Feel free to use emojis and a bit of humor to make the README more approachable.";
+        break;
+      case "Dasar":
+      default:
+        styleGuidance =
+          "Use a straightforward and clear tone. Provide the essential information in a well-organized manner.";
+        break;
+    }
+
+    return `Generate a comprehensive, professional README.md for this GitHub repository.
+Style Guidance: ${styleGuidance}
 
 REPOSITORY INFORMATION:
 - Name: ${repository.name}
@@ -37,6 +58,24 @@ PROJECT ANALYSIS:
 - Frameworks detected: ${frameworks.join(", ") || "None detected"}
 - Package managers: ${packageManagers.join(", ") || "None detected"}
 - Key files found: ${keyFiles.join(", ")}
+${
+  codeSnippets.length > 0
+    ? `
+CODE SNIPPETS ANALYSIS:
+${codeSnippets
+  .map(
+    (snippet) =>
+      `---
+File: ${snippet.fileName}
+Content:
+${snippet.content}
+---`
+  )
+  .join("\n")}
+Based on these snippets, infer the main functionalities of the project.
+`
+    : ""
+}
 
 DEPENDENCIES (top 10):
 ${Object.entries(dependencies)
@@ -50,28 +89,43 @@ ${Object.entries(scripts)
   .join("\n")}
 
 Generate a README.md that includes:
-1. Project title and description
-2. Features section (infer from dependencies and structure)
-3. Installation instructions (using detected package managers)
-4. Usage examples (based on scripts and project type)
-5. API documentation (if applicable)
-6. Contributing guidelines
-7. License information
-8. Acknowledgments
-
-Make it engaging, professional, and comprehensive. Use proper markdown formatting with badges, code blocks, and clear sections. The tone should be welcoming and informative for developers who want to use or contribute to this project.
+1.  Project title and description
+2.  Features section (infer from dependencies, structure, and code snippets)
+3.  Installation instructions
+4.  Usage examples
+5.  Contributing guidelines
+6.  License information
 
 Generate ONLY the README.md content, no additional commentary.`;
   }
 
-  async generateReadme(analysis: ProjectAnalysis): Promise<string> {
+  private createArchitecturePrompt(analysis: ProjectAnalysis): string {
+    const { structure } = analysis;
+    return `Based on the following file structure, generate a simple architecture diagram in Mermaid.js syntax.
+Focus ONLY on the main components and their relationships. Use a 'graph TD' (top-down) layout.
+
+File Structure:
+${structure.map((item) => `- ${item.path} (${item.type})`).join("\n")}
+
+IMPORTANT: Generate ONLY the Mermaid.js syntax inside a markdown code block. Do NOT include any other text or explanation.
+Example of a valid response:
+\`\`\`mermaid
+graph TD;
+    A["User"] --> B["Web App"];
+    B --> C{"API Server"};
+    C --> D[("Database")];
+\`\`\``;
+  }
+
+  async generateReadme(
+    analysis: ProjectAnalysis,
+    template: ReadmeTemplate
+  ): Promise<string> {
     try {
-      const prompt = this.createPrompt(analysis);
-      console.log("Starting AI generation with IBM Granite 3.3...");
+      const prompt = this.createPrompt(analysis, template);
+      console.log(`Starting AI generation with template: ${template}`);
 
-      // Using streaming approach with the new IBM Granite 3.3 model
       let readmeContent = "";
-
       const input = {
         prompt: prompt,
         max_tokens: 2500,
@@ -81,9 +135,6 @@ Generate ONLY the README.md content, no additional commentary.`;
         repetition_penalty: 1.1,
       };
 
-      console.log("Streaming response from IBM Granite 3.3...");
-
-      // Stream the response using the new model
       for await (const event of this.replicate.stream(
         "ibm-granite/granite-3.3-8b-instruct",
         { input }
@@ -91,7 +142,6 @@ Generate ONLY the README.md content, no additional commentary.`;
         if (typeof event === "string") {
           readmeContent += event;
         } else {
-          // Handle different event types if needed
           readmeContent += String(event);
         }
       }
@@ -108,8 +158,6 @@ Generate ONLY the README.md content, no additional commentary.`;
       return readmeContent.trim();
     } catch (error) {
       console.error("IBM Granite 3.3 AI generation error:", error);
-
-      // Enhanced error handling
       if (error instanceof Error) {
         if (
           error.message.includes("insufficient credits") ||
@@ -136,55 +184,48 @@ Generate ONLY the README.md content, no additional commentary.`;
             "Request timeout. The AI service is taking too long to respond."
           );
         }
-        // Re-throw the original error if it's specific
         throw error;
       }
-
-      // Fallback README generation
       console.log("Falling back to template README generation");
       return this.generateFallbackReadme(analysis);
     }
   }
 
-  // Alternative non-streaming method (backup)
-  async generateReadmeNonStream(analysis: ProjectAnalysis): Promise<string> {
+  async generateArchitectureDiagram(
+    analysis: ProjectAnalysis
+  ): Promise<string> {
     try {
-      const prompt = this.createPrompt(analysis);
-      console.log("Using non-streaming approach with IBM Granite 3.3...");
+      const prompt = this.createArchitecturePrompt(analysis);
+      console.log("Generating architecture diagram...");
 
-      const input = {
-        prompt: prompt,
-        max_tokens: 2500,
-        temperature: 0.7,
-        top_p: 0.9,
-        top_k: 50,
-        repetition_penalty: 1.1,
-      };
-
-      // Non-streaming approach
       const output = await this.replicate.run(
         "ibm-granite/granite-3.3-8b-instruct",
-        { input }
+        {
+          input: {
+            prompt: prompt,
+            max_tokens: 500,
+            temperature: 0.5,
+          },
+        }
       );
 
-      // Handle different output formats
-      let readmeContent: string;
-      if (Array.isArray(output)) {
-        readmeContent = output.join("");
-      } else if (typeof output === "string") {
-        readmeContent = output;
+      const diagramContent = Array.isArray(output)
+        ? output.join("")
+        : String(output);
+
+      // Simple validation: check if the output contains the mermaid block
+      if (diagramContent.includes("```mermaid")) {
+        console.log("Architecture diagram generation completed.");
+        return diagramContent.trim();
       } else {
-        readmeContent = String(output);
+        console.warn(
+          "AI did not return a valid Mermaid block. Returning empty."
+        );
+        return "";
       }
-
-      if (!readmeContent || readmeContent.trim().length === 0) {
-        throw new Error("AI generated empty content");
-      }
-
-      return readmeContent.trim();
     } catch (error) {
-      console.error("Non-streaming AI generation error:", error);
-      throw error;
+      console.error("Failed to generate architecture diagram:", error);
+      return ""; // Return empty string on error
     }
   }
 
@@ -198,7 +239,6 @@ Generate ONLY the README.md content, no additional commentary.`;
       keyFiles,
     } = analysis;
 
-    // Enhanced fallback with better structure
     const installSection = this.generateInstallSection(packageManagers);
     const usageSection = this.generateUsageSection(scripts, packageManagers);
     const featuresSection = this.generateFeaturesSection(
@@ -238,22 +278,22 @@ ${keyFiles.map((file) => `- \`${file}\``).join("\n")}
 
 We welcome contributions! Here's how you can help:
 
-1. **Fork the repository**
-2. **Create a feature branch**
-   \`\`\`bash
-   git checkout -b feature/amazing-feature
-   \`\`\`
-3. **Make your changes**
-4. **Run tests** (if available)
-5. **Commit your changes**
-   \`\`\`bash
-   git commit -m 'Add some amazing feature'
-   \`\`\`
-6. **Push to the branch**
-   \`\`\`bash
-   git push origin feature/amazing-feature
-   \`\`\`
-7. **Open a Pull Request**
+1.  **Fork the repository**
+2.  **Create a feature branch**
+    \`\`\`bash
+    git checkout -b feature/amazing-feature
+    \`\`\`
+3.  **Make your changes**
+4.  **Run tests** (if available)
+5.  **Commit your changes**
+    \`\`\`bash
+    git commit -m 'Add some amazing feature'
+    \`\`\`
+6.  **Push to the branch**
+    \`\`\`bash
+    git push origin feature/amazing-feature
+    \`\`\`
+7.  **Open a Pull Request**
 
 ## 📝 License
 
@@ -315,7 +355,6 @@ Made with ❤️ by the development team`;
     if (frameworks.length > 0)
       features.push(`⚡ Powered by **${frameworks.join(", ")}**`);
 
-    // Detect features from key files
     if (keyFiles.includes("dockerfile")) features.push("🐳 Docker support");
     if (keyFiles.includes("docker-compose.yml"))
       features.push("🐳 Docker Compose ready");

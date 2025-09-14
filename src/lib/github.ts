@@ -1,5 +1,10 @@
 import axios from "axios";
-import { GitHubRepo, FileStructure, ProjectAnalysis } from "@/types";
+import {
+  GitHubRepo,
+  FileStructure,
+  ProjectAnalysis,
+  CodeSnippet,
+} from "@/types";
 
 const GITHUB_API_BASE = "https://api.github.com";
 
@@ -15,7 +20,7 @@ export class GitHubAnalyzer {
       ? {
           Authorization: `Bearer ${this.token}`,
           Accept: "application/vnd.github.v3+json",
-          "User-Agent": "ReadmeGen-AI/1.0.0", // GitHub requires a User-Agent header
+          "User-Agent": "ReadmeGen-AI/1.0.0",
         }
       : {
           Accept: "application/vnd.github.v3+json",
@@ -31,7 +36,7 @@ export class GitHubAnalyzer {
         `${GITHUB_API_BASE}/repos/${owner}/${repo}`,
         {
           headers: this.getHeaders(),
-          timeout: 10000, // 10 second timeout
+          timeout: 10000,
         }
       );
 
@@ -90,7 +95,6 @@ export class GitHubAnalyzer {
         }
       }
 
-      // Handle network errors
       if (typeof error === "object" && error !== null && "code" in error) {
         const code = (error as { code?: string }).code;
         if (code === "ECONNABORTED") {
@@ -207,6 +211,45 @@ export class GitHubAnalyzer {
     }
   }
 
+  private async analyzeCode(
+    owner: string,
+    repo: string,
+    structure: FileStructure[]
+  ): Promise<CodeSnippet[]> {
+    const codeSnippets: CodeSnippet[] = [];
+    const keySourceFiles = [
+      "src/index.js",
+      "src/index.ts",
+      "src/main.js",
+      "src/main.ts",
+      "src/app.js",
+      "src/app.ts",
+      "main.py",
+      "app.py",
+    ];
+
+    const filesToAnalyze = structure.filter(
+      (file) =>
+        file.type === "file" &&
+        (keySourceFiles.includes(file.path) ||
+          file.path.startsWith("src/api/") ||
+          file.path.startsWith("src/controllers/"))
+    );
+
+    for (const file of filesToAnalyze.slice(0, 3)) {
+      // Limit to 3 files to avoid excessive API calls
+      const content = await this.getFileContent(owner, repo, file.path);
+      if (content) {
+        codeSnippets.push({
+          fileName: file.path,
+          content: content.slice(0, 1000), // Truncate content
+        });
+      }
+    }
+
+    return codeSnippets;
+  }
+
   async analyzeProject(owner: string, repo: string): Promise<ProjectAnalysis> {
     console.log(`Starting project analysis for: ${owner}/${repo}`);
 
@@ -216,7 +259,9 @@ export class GitHubAnalyzer {
     const structure = await this.getFileStructure(owner, repo);
     console.log(`File structure fetched: ${structure.length} items`);
 
-    // Analyze key files
+    const codeSnippets = await this.analyzeCode(owner, repo, structure);
+    console.log(`Code snippets fetched: ${codeSnippets.length} files`);
+
     const keyFiles = structure
       .filter((file) => file.type === "file")
       .map((file) => file.name.toLowerCase())
@@ -243,13 +288,11 @@ export class GitHubAnalyzer {
 
     console.log(`Key files found: ${keyFiles.join(", ")}`);
 
-    // Detect frameworks and package managers
     const frameworks: string[] = [];
     const packageManagers: string[] = [];
     let dependencies: Record<string, string> = {};
     let scripts: Record<string, string> = {};
 
-    // Analyze package.json for Node.js projects
     if (keyFiles.includes("package.json")) {
       packageManagers.push("npm");
       console.log("Analyzing package.json...");
@@ -268,7 +311,6 @@ export class GitHubAnalyzer {
           };
           scripts = packageJson.scripts || {};
 
-          // Detect frameworks from dependencies
           if (dependencies["next"]) frameworks.push("Next.js");
           if (dependencies["react"]) frameworks.push("React");
           if (dependencies["vue"]) frameworks.push("Vue.js");
@@ -283,7 +325,6 @@ export class GitHubAnalyzer {
       }
     }
 
-    // Analyze requirements.txt for Python projects
     if (keyFiles.includes("requirements.txt")) {
       packageManagers.push("pip");
       console.log("Analyzing requirements.txt...");
@@ -306,7 +347,6 @@ export class GitHubAnalyzer {
           }, {} as Record<string, string>);
         dependencies = deps;
 
-        // Detect Python frameworks
         if (deps["django"]) frameworks.push("Django");
         if (deps["flask"]) frameworks.push("Flask");
         if (deps["fastapi"]) frameworks.push("FastAPI");
@@ -322,13 +362,11 @@ export class GitHubAnalyzer {
       }
     }
 
-    // Analyze Cargo.toml for Rust projects
     if (keyFiles.includes("cargo.toml")) {
       packageManagers.push("cargo");
       frameworks.push("Rust");
     }
 
-    // Analyze go.mod for Go projects
     if (keyFiles.includes("go.mod")) {
       packageManagers.push("go mod");
       frameworks.push("Go");
@@ -344,6 +382,7 @@ export class GitHubAnalyzer {
       hasDocumentation: keyFiles.includes("readme.md"),
       structure,
       keyFiles,
+      codeSnippets,
     };
 
     console.log(`Project analysis completed for: ${owner}/${repo}`);

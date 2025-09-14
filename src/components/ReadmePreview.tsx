@@ -1,17 +1,47 @@
 "use client";
 
-import { useState } from "react";
-import ReactMarkdown from "react-markdown";
+import { useState, useEffect } from "react";
+import ReactMarkdown, { Components } from "react-markdown";
+import type { ExtraProps } from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { Copy, Check, Code2, Eye } from "lucide-react";
+import mermaid from "mermaid";
+import { HTMLAttributes } from "react";
 
 interface ReadmePreviewProps {
   content: string;
 }
 
+type CodeProps = HTMLAttributes<HTMLElement> &
+  ExtraProps & {
+    inline?: boolean;
+  };
+
+mermaid.initialize({ startOnLoad: false, theme: "default" });
+
 export function ReadmePreview({ content }: ReadmePreviewProps) {
   const [copied, setCopied] = useState(false);
   const [viewMode, setViewMode] = useState<"preview" | "raw">("preview");
+
+  useEffect(() => {
+    if (viewMode === "preview") {
+      // Find all potential mermaid diagrams and render them
+      const mermaidElements = document.querySelectorAll(".mermaid");
+      if (mermaidElements.length > 0) {
+        try {
+          mermaid.run({ nodes: mermaidElements as NodeListOf<HTMLElement> });
+        } catch (error) {
+          console.error("Mermaid rendering error:", error);
+          // Optionally, display an error message in the UI for each failed diagram
+          mermaidElements.forEach((el) => {
+            if (!el.getAttribute("data-processed")) {
+              el.innerHTML = `<div style="color: red; border: 1px solid red; padding: 10px; border-radius: 5px;">Error rendering diagram. Check console for details.</div>`;
+            }
+          });
+        }
+      }
+    }
+  }, [content, viewMode]);
 
   const handleCopy = async () => {
     try {
@@ -23,15 +53,56 @@ export function ReadmePreview({ content }: ReadmePreviewProps) {
     }
   };
 
+  const markdownComponents: Components = {
+    code: ({ node, inline, className, children, ...props }: CodeProps) => {
+      const match = /language-(\w+)/.exec(className || "");
+
+      if (!inline && match && match[1] === "mermaid") {
+        return <div className="mermaid">{String(children).trim()}</div>;
+      }
+
+      return !inline && match ? (
+        <pre className="bg-gray-100 dark:bg-gray-800 p-4 rounded-lg overflow-x-auto mb-4 border border-gray-200 dark:border-gray-700">
+          <code
+            className="block text-gray-800 dark:text-gray-200 font-mono text-sm"
+            {...props}
+          >
+            {children}
+          </code>
+        </pre>
+      ) : (
+        <code
+          className="bg-gray-100 dark:bg-gray-800 px-2 py-1 rounded text-sm font-mono text-pink-600 dark:text-pink-400 border border-gray-200 dark:border-gray-700"
+          {...props}
+        >
+          {children}
+        </code>
+      );
+    },
+    h1: ({ children }) => (
+      <h1 className="text-3xl font-bold mb-4 text-gray-900 dark:text-white border-b border-gray-200 dark:border-gray-700 pb-2">
+        {children}
+      </h1>
+    ),
+    h2: ({ children }) => (
+      <h2 className="text-2xl font-semibold mt-8 mb-4 text-gray-900 dark:text-white border-b border-gray-200 dark:border-gray-700 pb-2">
+        {children}
+      </h2>
+    ),
+    h3: ({ children }) => (
+      <h3 className="text-xl font-semibold mt-6 mb-3 text-gray-900 dark:text-white">
+        {children}
+      </h3>
+    ),
+  };
+
   return (
     <div className="w-full bg-white dark:bg-gray-900 rounded-lg border border-gray-200 dark:border-gray-700 shadow-lg">
-      {/* Header */}
       <div className="flex flex-row items-center justify-between p-4 border-b border-gray-200 dark:border-gray-700">
         <h2 className="text-xl font-bold text-gray-900 dark:text-white">
           Generated README.md
         </h2>
         <div className="flex items-center gap-2">
-          {/* View Mode Toggle */}
           <div className="flex rounded-lg border border-gray-300 dark:border-gray-600 p-1 bg-gray-50 dark:bg-gray-800">
             <button
               onClick={() => setViewMode("preview")}
@@ -56,8 +127,6 @@ export function ReadmePreview({ content }: ReadmePreviewProps) {
               Raw
             </button>
           </div>
-
-          {/* Copy Button */}
           <button
             onClick={handleCopy}
             className={`flex items-center px-3 py-1 text-sm rounded-md border transition-all ${
@@ -80,133 +149,12 @@ export function ReadmePreview({ content }: ReadmePreviewProps) {
           </button>
         </div>
       </div>
-
-      {/* Content */}
       <div className="p-6">
         {viewMode === "preview" ? (
           <div className="prose prose-lg prose-gray dark:prose-invert max-w-none">
             <ReactMarkdown
               remarkPlugins={[remarkGfm]}
-              components={{
-                h1: ({ children }) => (
-                  <h1 className="text-3xl font-bold mb-4 text-gray-900 dark:text-white border-b border-gray-200 dark:border-gray-700 pb-2">
-                    {children}
-                  </h1>
-                ),
-                h2: ({ children }) => (
-                  <h2 className="text-2xl font-semibold mt-8 mb-4 text-gray-900 dark:text-white border-b border-gray-200 dark:border-gray-700 pb-2">
-                    {children}
-                  </h2>
-                ),
-                h3: ({ children }) => (
-                  <h3 className="text-xl font-semibold mt-6 mb-3 text-gray-900 dark:text-white">
-                    {children}
-                  </h3>
-                ),
-                h4: ({ children }) => (
-                  <h4 className="text-lg font-medium mt-4 mb-2 text-gray-900 dark:text-white">
-                    {children}
-                  </h4>
-                ),
-                p: ({ children }) => (
-                  <p className="mb-4 text-gray-700 dark:text-gray-300 leading-relaxed">
-                    {children}
-                  </p>
-                ),
-                ul: ({ children }) => (
-                  <ul className="list-disc list-inside mb-4 space-y-2 text-gray-700 dark:text-gray-300">
-                    {children}
-                  </ul>
-                ),
-                ol: ({ children }) => (
-                  <ol className="list-decimal list-inside mb-4 space-y-2 text-gray-700 dark:text-gray-300">
-                    {children}
-                  </ol>
-                ),
-                li: ({ children }) => <li className="ml-4">{children}</li>,
-                pre: ({ children }) => (
-                  <pre className="bg-gray-100 dark:bg-gray-800 p-4 rounded-lg overflow-x-auto mb-4 border border-gray-200 dark:border-gray-700">
-                    {children}
-                  </pre>
-                ),
-                code: ({ children, className }) => {
-                  const isInline = !className;
-                  if (isInline) {
-                    return (
-                      <code className="bg-gray-100 dark:bg-gray-800 px-2 py-1 rounded text-sm font-mono text-pink-600 dark:text-pink-400 border border-gray-200 dark:border-gray-700">
-                        {children}
-                      </code>
-                    );
-                  }
-                  return (
-                    <code className="block text-gray-800 dark:text-gray-200 font-mono text-sm">
-                      {children}
-                    </code>
-                  );
-                },
-                blockquote: ({ children }) => (
-                  <blockquote className="border-l-4 border-blue-500 pl-4 py-2 my-4 bg-blue-50 dark:bg-blue-900/20 text-gray-700 dark:text-gray-300 italic rounded-r">
-                    {children}
-                  </blockquote>
-                ),
-                table: ({ children }) => (
-                  <div className="overflow-x-auto my-6">
-                    <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700 border border-gray-200 dark:border-gray-700 rounded-lg">
-                      {children}
-                    </table>
-                  </div>
-                ),
-                thead: ({ children }) => (
-                  <thead className="bg-gray-50 dark:bg-gray-800">
-                    {children}
-                  </thead>
-                ),
-                tbody: ({ children }) => (
-                  <tbody className="bg-white dark:bg-gray-900 divide-y divide-gray-200 dark:divide-gray-700">
-                    {children}
-                  </tbody>
-                ),
-                th: ({ children }) => (
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
-                    {children}
-                  </th>
-                ),
-                td: ({ children }) => (
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-gray-100">
-                    {children}
-                  </td>
-                ),
-                a: ({ href, children }) => (
-                  <a
-                    href={href}
-                    className="text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-300 underline"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                  >
-                    {children}
-                  </a>
-                ),
-                img: ({ src, alt }) => (
-                  <img
-                    src={src}
-                    alt={alt}
-                    className="max-w-full h-auto rounded-lg shadow-md my-4"
-                  />
-                ),
-                hr: () => (
-                  <hr className="my-8 border-gray-200 dark:border-gray-700" />
-                ),
-                strong: ({ children }) => (
-                  <strong className="font-semibold text-gray-900 dark:text-white">
-                    {children}
-                  </strong>
-                ),
-                em: ({ children }) => (
-                  <em className="italic text-gray-800 dark:text-gray-200">
-                    {children}
-                  </em>
-                ),
-              }}
+              components={markdownComponents}
             >
               {content}
             </ReactMarkdown>

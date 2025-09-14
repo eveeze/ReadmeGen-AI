@@ -5,14 +5,14 @@ import { extractGitHubInfo } from "@/lib/utils";
 import { kv } from "@vercel/kv";
 import { getServerSession } from "next-auth/next";
 import { authOptions } from "../auth/[...nextauth]/route";
-import { HistoryEntry } from "@/types";
+import { HistoryEntry, ReadmeTemplate } from "@/types";
 
 export async function POST(req: NextRequest) {
-  // Dapatkan sesi pengguna, ini tidak akan menghentikan pengguna anonim
   const session = await getServerSession(authOptions);
 
   try {
-    const { url } = await req.json();
+    const { url, template }: { url: string; template: ReadmeTemplate } =
+      await req.json();
 
     if (!url) {
       return NextResponse.json(
@@ -40,38 +40,38 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Initialize services
     const githubAnalyzer = new GitHubAnalyzer(githubToken);
     const aiGenerator = new AIReadmeGenerator(replicateToken);
 
-    // Analyze the repository
     const analysis = await githubAnalyzer.analyzeProject(
       repoInfo.owner,
       repoInfo.repo
     );
 
-    // Generate README using AI
-    const readmeContent = await aiGenerator.generateReadme(analysis);
+    const [readmeContent, architectureDiagram] = await Promise.all([
+      aiGenerator.generateReadme(analysis, template),
+      aiGenerator.generateArchitectureDiagram(analysis),
+    ]);
 
-    // Jika pengguna login, simpan hasilnya ke riwayat
+    const finalReadme = `${readmeContent}\n\n## 🏛️ Architecture\n\n${architectureDiagram}`;
+
     if (session && session.user?.email) {
       const historyKey = `history:${session.user.email}`;
       const historyEntry: HistoryEntry = {
         id: `${new Date().toISOString()}-${repoInfo.repo}`,
         repoName: `${repoInfo.owner}/${repoInfo.repo}`,
         repoUrl: url,
-        readme: readmeContent,
+        readme: finalReadme,
         generatedAt: new Date().toISOString(),
       };
 
       await kv.lpush(historyKey, historyEntry);
-      await kv.ltrim(historyKey, 0, 9); // Simpan hanya 10 item terakhir
+      await kv.ltrim(historyKey, 0, 9);
     }
 
-    // Respon sukses tetap sama
     return NextResponse.json({
       success: true,
-      readme: readmeContent,
+      readme: finalReadme,
       analysis: {
         repository: analysis.repository,
         mainLanguage: analysis.mainLanguage,
@@ -82,7 +82,6 @@ export async function POST(req: NextRequest) {
       },
     });
   } catch (error) {
-    // Di sini kita menggunakan penanganan error detail dari kode asli Anda
     console.error("Generation error:", error);
     let errorMessage = "Failed to generate README";
     let statusCode = 500;
@@ -129,7 +128,6 @@ export async function POST(req: NextRequest) {
   }
 }
 
-// Fungsi GET Anda tetap sama
 export async function GET() {
   return NextResponse.json(
     {

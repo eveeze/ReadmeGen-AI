@@ -19,6 +19,11 @@ export interface FileStructure {
   size?: number;
 }
 
+export interface CodeSnippet {
+  fileName: string;
+  content: string;
+}
+
 export interface ProjectAnalysis {
   repository: GitHubRepo;
   mainLanguage: string;
@@ -29,7 +34,10 @@ export interface ProjectAnalysis {
   hasDocumentation: boolean;
   structure: FileStructure[];
   keyFiles: string[];
+  codeSnippets: CodeSnippet[];
 }
+
+export type ReadmeTemplate = "Dasar" | "Profesional" | "Fun/Creative";
 
 export interface GenerationState {
   isLoading: boolean;

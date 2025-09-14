@@ -6,12 +6,13 @@ import { useSession } from "next-auth/react";
 import { UrlInput } from "@/components/UrlInput";
 import { RepoSelector } from "@/components/RepoSelector";
 import { ReadmePreview } from "@/components/ReadmePreview";
-import { GenerationState } from "@/types";
+import { GenerationState, ReadmeTemplate } from "@/types";
 import { Github, Sparkles, FileText, Zap } from "lucide-react";
 
 export default function HomePage() {
   const { status } = useSession();
   const [url, setUrl] = useState("");
+  const [template, setTemplate] = useState<ReadmeTemplate>("Profesional");
   const [generationState, setGenerationState] = useState<GenerationState>({
     isLoading: false,
     error: null,
@@ -29,7 +30,6 @@ export default function HomePage() {
     });
     setGeneratedReadme("");
 
-    // Simulate progress dots
     const progressInterval = setInterval(() => {
       setGenerationState((prev) => {
         if (prev.progress.endsWith("...")) {
@@ -40,7 +40,10 @@ export default function HomePage() {
     }, 500);
 
     try {
-      const response = await axios.post("/api/generate", { url: targetUrl });
+      const response = await axios.post("/api/generate", {
+        url: targetUrl,
+        template: template,
+      });
       if (response.data.success) {
         setGeneratedReadme(response.data.readme);
         setGenerationState({
@@ -127,6 +130,23 @@ export default function HomePage() {
           error={generationState.error}
           progress={generationState.progress}
         />
+
+        <div className="max-w-2xl mx-auto">
+          <label htmlFor="template-selector" className="text-sm font-medium">
+            Pilih Template
+          </label>
+          <select
+            id="template-selector"
+            value={template}
+            onChange={(e) => setTemplate(e.target.value as ReadmeTemplate)}
+            disabled={generationState.isLoading}
+            className="mt-2 flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            <option value="Profesional">Profesional</option>
+            <option value="Dasar">Dasar</option>
+            <option value="Fun/Creative">Fun/Creative</option>
+          </select>
+        </div>
 
         {status === "authenticated" && (
           <div className="max-w-2xl mx-auto">
