@@ -43,11 +43,24 @@ export default function HomePage() {
         url: targetUrl,
         template,
         language,
-        badges,
+        badges, // Mengirim state badge saat ini (termasuk yang kustom)
       });
+
       if (response.data.success) {
         setGeneratedReadme(response.data.readme);
-        setBadges(response.data.analysis.badges);
+
+        // --- INI BAGIAN YANG DIPERBAIKI ---
+        // Kita gabungkan badge dari server dengan badge kustom yang sudah ada,
+        // untuk menghindari duplikasi dan penimpaan.
+        const serverBadges = response.data.analysis.badges || [];
+        setBadges((currentBadges) => {
+          const customBadges = currentBadges.filter(
+            (b) => !serverBadges.some((sb: Badge) => sb.name === b.name)
+          );
+          return [...serverBadges, ...customBadges];
+        });
+        // --- AKHIR BAGIAN PERBAIKAN ---
+
         setGenerationState({
           isLoading: false,
           error: null,
