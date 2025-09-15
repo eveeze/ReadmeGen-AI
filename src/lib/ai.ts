@@ -17,6 +17,7 @@ export class AIReadmeGenerator {
       auth: apiToken,
     });
   }
+
   // FUNGSI BARU: Membuat prompt untuk menghasilkan pertanyaan
   private createQuestionPrompt(analysis: ProjectAnalysis): string {
     return `
@@ -84,13 +85,14 @@ export class AIReadmeGenerator {
     }
   }
 
-  // Enhanced prompt with all new features
+  // Enhanced prompt with all new features and consistent structure
   private createPrompt(
     analysis: ProjectAnalysis,
     template: ReadmeTemplate,
     language: ReadmeLanguage,
     customBadges: Badge[],
-    userAnswers?: Record<string, string>
+    userAnswers?: Record<string, string>,
+    logoUrl?: string // New parameter for user-provided logo
   ): string {
     const {
       repository,
@@ -109,7 +111,12 @@ export class AIReadmeGenerator {
       contributionGuide,
     } = analysis;
 
-    // Combine all badges (auto-generated + custom)
+    const logoSection = logoUrl
+      ? `<p align="center"><img src="${logoUrl}" alt="Project Logo" width="130"></p>`
+      : analysis.projectLogo?.svgContent
+      ? `<p align="center">${analysis.projectLogo.svgContent}</p>`
+      : "";
+
     const allBadges = [...analysis.badges, ...customBadges];
     const badgeMarkdown = allBadges
       .map(
@@ -134,6 +141,7 @@ export class AIReadmeGenerator {
           "Use a straightforward and clear tone. Provide the essential information in a well-organized manner.";
         break;
     }
+
     const userAnswersSection =
       userAnswers && Object.keys(userAnswers).length > 0
         ? `
@@ -143,157 +151,104 @@ ${Object.entries(userAnswers)
   .join("\n")}
 `
         : "";
-    // NEW: Create sections for new features
-    const cicdSection = cicdConfig
-      ? `
-**CI/CD Configuration:**
-- Platform: ${cicdConfig.platform}
-- Config File: ${cicdConfig.configFile}
-- Workflows: ${cicdConfig.workflows?.join(", ") || "None"}
-- Has Testing: ${cicdConfig.hasTesting ? "Yes" : "No"}
-- Has Deployment: ${cicdConfig.hasDeployment ? "Yes" : "No"}
-`
-      : "";
 
-    const testSection = testConfig
-      ? `
-**Testing Configuration:**
-- Framework: ${testConfig.framework}
-- Test Commands: ${testConfig.commands.join(", ")}
-- Unit Tests: ${testConfig.unitTests ? "Yes" : "No"}
-- E2E Tests: ${testConfig.e2eTests ? "Yes" : "No"}
-- Coverage: ${testConfig.coverage ? "Yes" : "No"}
-`
-      : "";
+    return `
+      Generate a comprehensive, professional README.md for a GitHub repository in ${language}.
+      Follow this structure precisely:
 
-    const deploymentSection = deploymentConfig
-      ? `
-**Deployment Configuration:**
-- Platform: ${deploymentConfig.platform}
-- Config Files: ${deploymentConfig.configFiles.join(", ")}
-- Build Command: ${deploymentConfig.buildCommand || "Not specified"}
-- Requires Environment Variables: ${deploymentConfig.requiresEnv ? "Yes" : "No"}
-`
-      : "";
+      1.  **Header**:
+          ${logoSection}
+          <h1 align="center">${repository.name}</h1>
+          <p align="center">${
+            repository.description || "A brief description of the project."
+          }</p>
+          <p align="center">Get started by ... (fill in a brief call to action)</p>
+          <div align="center">${badgeMarkdown}</div>
 
-    const contributionSection = `
-**Contribution Guide:**
-- Has Custom Guide: ${contributionGuide.hasCustomGuide ? "Yes" : "No"}
-- Code of Conduct: ${contributionGuide.codeOfConduct ? "Yes" : "No"}
-- Suggested Steps: ${contributionGuide.suggestedSteps.slice(0, 5).join(" → ")}
-`;
+      2.  **Table of Contents**:
+          - <a href="#about">About The Project</a>
+          - <a href="#getting-started">Getting Started</a>
+          - <a href="#features">Features</a>
+          - <a href="#tech-stack">Tech Stack</a>
+          - <a href="#contributing">Contributing</a>
+          - <a href="#license">License</a>
+          - <a href="#contact">Contact</a>
 
-    const enhancedCodeSnippets = summarizedCodeSnippets
-      .map(
-        (snippet: CodeSnippet) =>
-          `---
-File: ${snippet.fileName}
-Features: ${snippet.detectedFeatures?.join(", ") || "None detected"}
-Complexity: ${snippet.complexity || "Unknown"}
-Main Function: ${snippet.mainFunction || "Not identified"}
-Content Preview:
-\`\`\`${mainLanguage.toLowerCase()}
-${snippet.content.slice(0, 400)}...
-\`\`\`
----`
-      )
-      .join("\n");
+      3.  **About The Project**:
+          Provide a more detailed overview of the project. Explain the "why" behind it, not just the "what". What problem does it solve?
 
-    return `Generate a comprehensive, professional README.md for a GitHub repository in ${language}.
-Style Guidance: ${styleGuidance}
+      4.  **Getting Started**:
+          Provide clear, step-by-step instructions on how to get a local copy up and running. Include prerequisites and installation steps based on the analysis.
 
-**1. REPOSITORY INFORMATION:**
-- Name: ${repository.name}
-- Description: ${repository.description || "No description provided."}
-- Main Language: ${mainLanguage}
-- Topics: ${repository.topics.join(", ") || "None"}
-- License: ${repository.license?.name || "Not specified"}
+      5.  **Features**:
+          - List the key features of the project based on the analysis.
 
-**2. DETAILED PROJECT ANALYSIS:**
-- **Frameworks & Key Libraries:** ${frameworks.join(", ") || "None detected"}
-- **Package Managers:** ${packageManagers.join(", ") || "None detected"}
-${userAnswersSection}
-${cicdSection}
-${testSection}
-${deploymentSection}
-${contributionSection}
+      6.  **Tech Stack**:
+          - List the technologies used based on the analysis.
 
-**3. ENVIRONMENT VARIABLES:**
-${
-  envVariables.length > 0
-    ? envVariables
-        .map(
-          (v) =>
-            `- ${v.key}: ${v.description || "Environment variable"}${
-              v.required ? " (Required)" : ""
-            }`
-        )
-        .join("\n")
-    : "None specified"
-}
+      7.  **Contributing**:
+          - Provide guidelines for contributing to the project based on the analysis.
 
-**4. API ENDPOINTS:**
-${
-  apiEndpoints.length > 0
-    ? apiEndpoints
-        .map((e) => `- ${e.method} ${e.path}: ${e.description}`)
-        .join("\n")
-    : "None detected"
-}
+      8.  **License**:
+          - State the project's license based on the analysis.
 
-**5. FULL FILE TREE:**
-\`\`\`
-${fullFileTree}
-\`\`\`
+      9.  **Contact**:
+          - Provide contact information for the project maintainer(s).
 
-**6. ENHANCED CODE ANALYSIS:**
-${enhancedCodeSnippets || "No key code snippets were analyzed."}
+      **PROJECT ANALYSIS DETAILS:**
+      - **Style Guidance**: ${styleGuidance}
+      - **Repository Information**:
+        - Name: ${repository.name}
+        - Description: ${repository.description || "No description provided."}
+        - Main Language: ${mainLanguage}
+        - Topics: ${repository.topics.join(", ") || "None"}
+        - License: ${repository.license?.name || "Not specified"}
+      - **Frameworks & Key Libraries**: ${
+        frameworks.join(", ") || "None detected"
+      }
+      - **Package Managers**: ${packageManagers.join(", ") || "None detected"}
+      ${userAnswersSection}
+      - **CI/CD Configuration**: ${
+        cicdConfig
+          ? `${cicdConfig.platform} (${cicdConfig.configFile})`
+          : "None"
+      }
+      - **Testing Configuration**: ${
+        testConfig
+          ? `${testConfig.framework} with commands: ${testConfig.commands.join(
+              ", "
+            )}`
+          : "None"
+      }
+      - **Deployment Configuration**: ${
+        deploymentConfig
+          ? `${
+              deploymentConfig.platform
+            } with files: ${deploymentConfig.configFiles.join(", ")}`
+          : "None"
+      }
+      - **Contribution Guide**: ${
+        contributionGuide.hasCustomGuide
+          ? "Custom guide detected"
+          : "No custom guide"
+      }
+      - **Environment Variables**: ${
+        envVariables.length > 0
+          ? `${envVariables.length} variables found`
+          : "None"
+      }
+      - **API Endpoints**: ${
+        apiEndpoints.length > 0
+          ? `${apiEndpoints.length} endpoints found`
+          : "None"
+      }
+      - **Key Dependencies**: ${
+        Object.keys(dependencies).slice(0, 10).join(", ") || "None"
+      }
+      - **Available Scripts**: ${Object.keys(scripts).join(", ") || "None"}
 
-**7. DEPENDENCIES & SCRIPTS:**
-- **Key Dependencies:** ${
-      Object.keys(dependencies).slice(0, 10).join(", ") || "None"
-    }
-- **Available Scripts:** ${Object.keys(scripts).join(", ") || "None"}
-
-**TASK:**
-Based on ALL the information above, generate a high-quality README.md in ${language}. Include these sections:
-
-1. **Project Title with Logo** (use a simple emoji or text-based logo)
-2. **Badges Section** (Use this exact markdown): ${badgeMarkdown}
-3. **Description** - Compelling project overview
-4. **Features** - Bulleted list based on detected frameworks and code analysis
-5. **Tech Stack** - Based on detected technologies
-6. **Architecture Overview** - Brief explanation using the file tree
-7. **Prerequisites** - System requirements
-8. **Installation** - Step-by-step setup based on package managers detected
-9. **Usage** - How to run the project with detected scripts
-10. **API Documentation** - If endpoints were detected
-11. **Environment Variables** - If any were found
-12. **Testing** - If tests were detected, include test commands
-13. **Deployment** - Include deployment instructions and badges based on detected platform
-14. **CI/CD** - If workflows were detected
-15. **Contributing** - Use the suggested steps from analysis
-16. **License** - Based on detected license
-
-${
-  deploymentConfig?.platform === "vercel"
-    ? `
-**SPECIAL INSTRUCTION:** Include a "Deploy to Vercel" button:
-[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=${repository.html_url})
-`
-    : ""
-}
-
-${
-  deploymentConfig?.platform === "netlify"
-    ? `
-**SPECIAL INSTRUCTION:** Include a "Deploy to Netlify" button:
-[![Deploy to Netlify](https://www.netlify.com/img/deploy/button.svg)](https://app.netlify.com/start/deploy?repository=${repository.html_url})
-`
-    : ""
-}
-
-Generate ONLY the README.md content. Make it engaging, comprehensive, and professional.`;
+      Generate ONLY the README.md content. Make it engaging, comprehensive, and professional.
+    `;
   }
 
   // Enhanced architecture prompt with better analysis
@@ -335,23 +290,21 @@ Generate ONLY the Mermaid syntax inside a markdown code block.`;
     if (!analysis.projectLogo) return "";
 
     try {
-      const prompt = `Create a simple, modern SVG logo for a ${
-        analysis.mainLanguage
-      } project called "${analysis.repository.name}".
-      
-Project Details:
-- Name: ${analysis.repository.name}
-- Description: ${analysis.repository.description}
-- Main Language: ${analysis.mainLanguage}
-- Topics: ${analysis.repository.topics.join(", ")}
+      const prompt = `
+        Create a simple, modern, and professional SVG logo (64x64) for a project named "${
+          analysis.repository.name
+        }".
 
-Create a clean, minimalist SVG logo (64x64) with:
-1. Simple geometric shapes
-2. Modern color scheme appropriate for ${analysis.mainLanguage}
-3. Text or initials if appropriate
-4. Professional appearance
+        **Guidelines**:
+        1.  Use a solid background color.
+        2.  Use the project's initials ("${analysis.repository.name
+          .charAt(0)
+          .toUpperCase()}") as the main element.
+        3.  Use a clean, sans-serif font for the initial.
+        4.  The color scheme should be modern and professional.
 
-Return only the SVG code, no explanations.`;
+        Return only the SVG code, with no explanations.
+      `;
 
       const output = await this.replicate.run(
         "ibm-granite/granite-3.3-8b-instruct",
@@ -446,7 +399,8 @@ Keep the summary concise and technical.`;
     template: ReadmeTemplate,
     language: ReadmeLanguage,
     customBadges: Badge[],
-    userAnswers?: Record<string, string>
+    userAnswers?: Record<string, string>,
+    logoUrl?: string // New optional parameter
   ): Promise<string> {
     try {
       const enhancedAnalysis = {
@@ -461,7 +415,8 @@ Keep the summary concise and technical.`;
         template,
         language,
         customBadges,
-        userAnswers
+        userAnswers,
+        logoUrl // Pass logoUrl to createPrompt
       );
 
       console.log(
@@ -608,7 +563,7 @@ ${testConfig.commands.join("\n")}
 \`\`\`
 
 - **Unit Tests:** ${testConfig.unitTests ? "✅ Available" : "❌ Not configured"}
-- **E2E Tests:** ${testConfig.e2eTests ? "✅ Available" : "❌ Not configured"}  
+- **E2E Tests:** ${testConfig.e2eTests ? "✅ Available" : "❌ Not configured"}
 - **Coverage:** ${testConfig.coverage ? "✅ Enabled" : "❌ Not enabled"}
 `
       : "";

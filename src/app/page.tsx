@@ -27,12 +27,10 @@ import {
   Shield,
   Rocket,
   Terminal,
-  Code,
-  Activity,
-  Database,
   Globe,
   Coffee,
 } from "lucide-react";
+import { Input } from "@/components/ui/input";
 
 // Definisikan tipe yang sesuai dengan props EnhancedAnalysisDisplay
 // Tipe ini bisa dihapus jika Anda mengimpor ProjectAnalysis dan menggunakannya secara langsung
@@ -94,6 +92,8 @@ export default function HomePage() {
   const [template, setTemplate] = useState<ReadmeTemplate>("Profesional");
   const [language, setLanguage] = useState<ReadmeLanguage>("English");
   const [badges, setBadges] = useState<Badge[]>([]);
+  const [logoUrl, setLogoUrl] = useState("");
+
   const [generationState, setGenerationState] = useState<GenerationState>({
     isLoading: false,
     error: null,
@@ -134,6 +134,7 @@ export default function HomePage() {
         template,
         language,
         badges,
+        logoUrl, // Pass logoUrl to the API
         isInteractive, // Kirim flag interaktif
         options: {
           includeArchitecture: true,
@@ -196,6 +197,7 @@ export default function HomePage() {
         template,
         language,
         badges,
+        logoUrl, // Pass logoUrl to the API
         options: {
           includeArchitecture: true,
           includeLogo: true,
@@ -398,6 +400,19 @@ export default function HomePage() {
                         &quot;zh&quot; // mandarin
                       </option>
                     </select>
+                  </div>
+                  <div className="md:col-span-2">
+                    <label className="block text-sm font-medium font-mono text-terminal-yellow mb-2">
+                      logo_url: (optional)
+                    </label>
+                    <Input
+                      type="url"
+                      placeholder="https://example.com/logo.png"
+                      value={logoUrl}
+                      onChange={(e) => setLogoUrl(e.target.value)}
+                      disabled={generationState.isLoading}
+                      className="terminal-input w-full"
+                    />
                   </div>
                 </div>
 

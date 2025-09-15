@@ -34,6 +34,7 @@ interface GenerateRequestBody {
   isInteractive?: boolean;
   analysisData?: ProjectAnalysis;
   userAnswers?: Record<string, string>;
+  logoUrl?: string; // Ditambahkan untuk menerima logoUrl
 }
 
 /**
@@ -137,6 +138,7 @@ export async function POST(req: NextRequest) {
       isInteractive,
       analysisData,
       userAnswers,
+      logoUrl,
     } = body;
 
     const replicateToken = process.env.REPLICATE_API_TOKEN;
@@ -159,7 +161,8 @@ export async function POST(req: NextRequest) {
         template,
         language,
         badges,
-        userAnswers
+        userAnswers,
+        logoUrl
       );
       const formattedAnalysis = formatAnalysisForResponse(analysisData);
 
@@ -223,7 +226,14 @@ export async function POST(req: NextRequest) {
     console.log("Standard mode: generating README directly...");
     const [readmeContent, architectureDiagram, projectLogo] = await Promise.all(
       [
-        aiGenerator.generateReadme(analysis, template, language, badges),
+        aiGenerator.generateReadme(
+          analysis,
+          template,
+          language,
+          badges,
+          undefined,
+          logoUrl
+        ),
         options.includeArchitecture
           ? aiGenerator.generateArchitectureDiagram(analysis)
           : Promise.resolve(""),

@@ -12,6 +12,7 @@ import {
   Maximize2,
   Minimize2,
   X,
+  ExternalLink,
 } from "lucide-react";
 
 interface ReadmePreviewProps {
@@ -23,20 +24,21 @@ export const ReadmePreview: React.FC<ReadmePreviewProps> = ({ content }) => {
   const [copied, setCopied] = useState(false);
   const [isMaximized, setIsMaximized] = useState(false);
   const previewRef = useRef<HTMLDivElement>(null);
-  const [currentTime, setCurrentTime] = useState(
-    new Date().toLocaleTimeString()
-  );
+  const [currentTime, setCurrentTime] = useState<string | null>(null); // 1. Inisialisasi dengan null
 
-  // Update time every second for terminal authenticity
+  // 2. Gunakan useEffect untuk mengatur waktu hanya di sisi klien
   useEffect(() => {
+    // Atur waktu awal saat komponen pertama kali di-mount di klien
+    setCurrentTime(new Date().toLocaleTimeString());
+
     const timer = setInterval(() => {
       setCurrentTime(new Date().toLocaleTimeString());
     }, 1000);
 
     return () => clearInterval(timer);
-  }, []);
+  }, []); // Dependensi kosong memastikan ini hanya berjalan sekali di klien
 
-  // Enhanced markdown processing for terminal theme
+  // ... (sisa dari useEffect untuk markdown processing tetap sama)
   useEffect(() => {
     if (viewMode === "preview" && previewRef.current) {
       // Handle Mermaid diagrams
@@ -58,10 +60,6 @@ export const ReadmePreview: React.FC<ReadmePreviewProps> = ({ content }) => {
                   <div class="text-sm font-bold text-terminal-yellow font-mono">[DIAGRAM] Architecture Flow</div>
                   <div class="text-xs text-terminal-comment font-mono">mermaid.js rendering</div>
                 </div>
-              </div>
-              <div class="flex items-center space-x-2 text-xs text-terminal-comment font-mono">
-                <ExternalLink class="w-3 h-3" />
-                <span>renders on github.com</span>
               </div>
             </div>
             <div class="mermaid-code-terminal">
