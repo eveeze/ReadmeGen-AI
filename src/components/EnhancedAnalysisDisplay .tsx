@@ -17,7 +17,6 @@ import {
   CheckCircle2,
   XCircle,
   AlertCircle,
-  Palette,
   Award,
 } from "lucide-react";
 

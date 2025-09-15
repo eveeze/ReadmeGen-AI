@@ -12,7 +12,7 @@ import {
   Copy,
   Check,
 } from "lucide-react";
-
+import Image from "next/image";
 interface BadgeGeneratorProps {
   badges: Badge[];
   setBadges: (badges: Badge[]) => void;
@@ -122,9 +122,11 @@ export function BadgeGenerator({ badges, setBadges }: BadgeGeneratorProps) {
                   key={index}
                   className="flex items-center gap-3 p-3 bg-secondary/50 border border-border rounded-md hover:bg-secondary transition-colors"
                 >
-                  <img
+                  <Image
                     src={badge.url}
                     alt={badge.name}
+                    width={90}
+                    height={90}
                     className="h-5 max-w-[200px] rounded-sm border border-border/50"
                   />
                   <div className="flex-grow">
@@ -236,10 +238,12 @@ export function BadgeGenerator({ badges, setBadges }: BadgeGeneratorProps) {
                 onClick={() => setBadges([...badges, badge])}
                 className="flex items-center space-x-3 p-3 bg-secondary/30 hover:bg-secondary border border-border rounded-md transition-colors text-left"
               >
-                <img
+                <Image
+                  width={90}
+                  height={90}
                   src={badge.url}
                   alt={badge.name}
-                  className="h-4 rounded-sm border border-border/30"
+                  className=" rounded-sm border border-border/30"
                 />
                 <span className="text-sm font-mono text-foreground">
                   {badge.name}

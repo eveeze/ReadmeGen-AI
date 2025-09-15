@@ -5,7 +5,6 @@ import {
   Download,
   Eye,
   Code,
-  ExternalLink,
   Check,
   FileText,
   Github,

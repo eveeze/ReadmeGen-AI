@@ -15,6 +15,13 @@ import {
 
 const GITHUB_API_BASE = "https://api.github.com";
 
+// Interface untuk package.json
+interface PackageJson {
+  scripts?: { [key: string]: string };
+  dependencies?: { [key: string]: string };
+  devDependencies?: { [key: string]: string };
+}
+
 export class GitHubAnalyzer {
   private token?: string;
 
@@ -115,7 +122,7 @@ export class GitHubAnalyzer {
           size: item.size,
         })
       );
-    } catch (error) {
+    } catch {
       return [];
     }
   }
@@ -134,7 +141,7 @@ export class GitHubAnalyzer {
         return Buffer.from(response.data.content, "base64").toString("utf-8");
       }
       return null;
-    } catch (error) {
+    } catch {
       return null;
     }
   }
@@ -222,7 +229,7 @@ export class GitHubAnalyzer {
     owner: string,
     repo: string,
     structure: FileStructure[],
-    packageJson?: any
+    packageJson?: PackageJson
   ): Promise<TestConfig | undefined> {
     const testFiles = structure.filter((file) => {
       const path = file.path.toLowerCase();
@@ -241,7 +248,7 @@ export class GitHubAnalyzer {
     if (testFiles.length === 0 && !packageJson?.scripts) return undefined;
 
     let framework = "Unknown";
-    let commands: string[] = [];
+    const commands: string[] = [];
     let coverage = false;
     let e2eTests = false;
     let unitTests = false;
@@ -303,7 +310,7 @@ export class GitHubAnalyzer {
   // NEW: Detect deployment configuration
   private detectDeploymentConfig(
     structure: FileStructure[],
-    packageJson?: any
+    packageJson?: PackageJson
   ): DeploymentConfig | undefined {
     const deploymentFiles = structure.filter((file) => {
       const name = file.name.toLowerCase();
@@ -379,7 +386,7 @@ export class GitHubAnalyzer {
           </linearGradient>
         </defs>
         <rect width="64" height="64" rx="12" fill="url(#grad)"/>
-        <text x="32" y="42" font-family="Arial, sans-serif" font-size="28" font-weight="bold" 
+        <text x="32" y="42" font-family="Arial, sans-serif" font-size="28" font-weight="bold"
               text-anchor="middle" fill="white">${firstLetter}</text>
       </svg>
     `;
@@ -735,7 +742,7 @@ export class GitHubAnalyzer {
           fileName: file.path,
           content: content,
           summary: "Awaiting AI summary",
-          detectedFeatures: this.detectCodeFeatures(content, file.path),
+          detectedFeatures: this.detectCodeFeatures(content),
           complexity: this.assessComplexity(content),
           mainFunction: this.extractMainFunction(content),
         });
@@ -745,7 +752,7 @@ export class GitHubAnalyzer {
   }
 
   // NEW: Detect code features
-  private detectCodeFeatures(content: string, fileName: string): string[] {
+  private detectCodeFeatures(content: string): string[] {
     const features: string[] = [];
     const lowerContent = content.toLowerCase();
 
@@ -909,7 +916,7 @@ export class GitHubAnalyzer {
     const packageManagers: string[] = [];
     let dependencies: Record<string, string> = {};
     let scripts: Record<string, string> = {};
-    let packageJson: any = null;
+    let packageJson: PackageJson | null = null;
 
     if (keyFiles.includes("package.json")) {
       packageManagers.push("npm");
@@ -922,16 +929,16 @@ export class GitHubAnalyzer {
         try {
           packageJson = JSON.parse(packageContent);
           dependencies = {
-            ...packageJson.dependencies,
-            ...packageJson.devDependencies,
+            ...packageJson?.dependencies,
+            ...packageJson?.devDependencies,
           };
-          scripts = packageJson.scripts || {};
+          scripts = packageJson?.scripts || {};
           if (dependencies["next"]) frameworks.push("Next.js");
           if (dependencies["react"]) frameworks.push("React");
           if (dependencies["vue"]) frameworks.push("Vue");
           if (dependencies["@angular/core"]) frameworks.push("Angular");
           if (dependencies["express"]) frameworks.push("Express");
-        } catch (e) {
+        } catch {
           console.warn("Failed to parse package.json");
         }
       }
@@ -947,8 +954,10 @@ export class GitHubAnalyzer {
       projectLogo,
     ] = await Promise.all([
       this.detectCICD(owner, repo, structure),
-      this.detectTestConfig(owner, repo, structure, packageJson),
-      Promise.resolve(this.detectDeploymentConfig(structure, packageJson)),
+      this.detectTestConfig(owner, repo, structure, packageJson || undefined),
+      Promise.resolve(
+        this.detectDeploymentConfig(structure, packageJson || undefined)
+      ),
       this.detectEnvVariables(owner, repo, structure),
       this.detectApiEndpoints(owner, repo, summarizedCodeSnippets),
       Promise.resolve(this.generateProjectLogo(repository)),

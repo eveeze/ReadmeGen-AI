@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import axios from "axios";
+import axios, { AxiosError } from "axios";
 import { useSession } from "next-auth/react";
 import { UrlInput } from "@/components/UrlInput";
 import { RepoSelector } from "@/components/RepoSelector";
@@ -31,6 +31,59 @@ import {
   Coffee,
 } from "lucide-react";
 
+// Definisikan tipe yang sesuai dengan props EnhancedAnalysisDisplay
+interface DisplayAnalysisData {
+  repository: {
+    name: string;
+    description: string;
+    language: string;
+    topics: string[];
+  };
+  features: {
+    cicd?: {
+      platform: string;
+      hasAutomatedTesting: boolean;
+      hasAutomatedDeployment: boolean;
+      workflows: number;
+    };
+    testing?: {
+      framework: string;
+      hasUnitTests: boolean;
+      hasE2ETests: boolean;
+      hasCoverage: boolean;
+      testCommands: number;
+    };
+    deployment?: {
+      platform: string;
+      requiresEnvVars: boolean;
+      hasBuildProcess: boolean;
+    };
+    api: {
+      endpointCount: number;
+      methods: string[];
+    };
+    environment: {
+      variableCount: number;
+      requiredVars: number;
+    };
+    codeQuality: {
+      analyzedFiles: number;
+      totalComplexity: number;
+      detectedFeatures: string[];
+    };
+    contribution: {
+      hasGuide: boolean;
+      hasCodeOfConduct: boolean;
+      suggestedSteps: number;
+    };
+  };
+  metadata: {
+    generatedAt: string;
+    analysisVersion: string;
+    featuresDetected: string[];
+  };
+}
+
 export default function HomePage() {
   const { status } = useSession();
   const [url, setUrl] = useState("");
@@ -44,8 +97,9 @@ export default function HomePage() {
   });
   const [generatedReadme, setGeneratedReadme] = useState<string>("");
 
-  // Enhanced features states
-  const [analysisData, setAnalysisData] = useState<any>(null);
+  const [analysisData, setAnalysisData] = useState<DisplayAnalysisData | null>(
+    null
+  );
   const [projectLogo, setProjectLogo] = useState<string>("");
   const [showAnalysis, setShowAnalysis] = useState(true);
 
@@ -122,10 +176,11 @@ export default function HomePage() {
       } else {
         throw new Error(response.data.error || "Generation pipeline failed");
       }
-    } catch (error: any) {
+    } catch (error: unknown) {
+      const axiosError = error as AxiosError<{ error: string }>;
       const errorMessage =
-        error.response?.data?.error ||
-        error.message ||
+        axiosError.response?.data?.error ||
+        (error as Error).message ||
         "Unexpected error in AI pipeline";
       setGenerationState({
         isLoading: false,
@@ -138,7 +193,6 @@ export default function HomePage() {
   return (
     <div className="min-h-screen bg-background text-foreground">
       <div className="container mx-auto px-4 py-8 max-w-7xl">
-        {/* Terminal-styled Header */}
         <div className="text-center mb-12">
           <div className="flex items-center justify-center mb-8">
             <div className="terminal-window bg-card shadow-2xl max-w-2xl">
@@ -199,7 +253,6 @@ export default function HomePage() {
             </div>
           </div>
 
-          {/* Feature Matrix */}
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4 max-w-4xl mx-auto mb-8">
             {[
               { icon: Brain, label: "AI Analysis", color: "terminal-blue" },
@@ -225,7 +278,6 @@ export default function HomePage() {
         </div>
 
         <div className="space-y-8">
-          {/* URL Input Section */}
           <UrlInput
             url={url}
             setUrl={setUrl}
@@ -235,7 +287,6 @@ export default function HomePage() {
             progress={generationState.progress}
           />
 
-          {/* Configuration Terminal */}
           <div className="max-w-4xl mx-auto">
             <div className="terminal-window bg-card">
               <div className="terminal-header">
@@ -283,13 +334,13 @@ export default function HomePage() {
                       className="terminal-input w-full bg-input border border-border text-foreground font-mono"
                     >
                       <option value="Profesional">
-                        "professional" // comprehensive
+                        &quot;professional&quot; // comprehensive
                       </option>
                       <option value="Dasar">
-                        "basic" // minimal essential
+                        &quot;basic&quot; // minimal essential
                       </option>
                       <option value="Fun/Creative">
-                        "creative" // engaging style
+                        &quot;creative&quot; // engaging style
                       </option>
                     </select>
                   </div>
@@ -306,15 +357,18 @@ export default function HomePage() {
                       disabled={generationState.isLoading}
                       className="terminal-input w-full bg-input border border-border text-foreground font-mono"
                     >
-                      <option value="English">"en" // english</option>
-                      <option value="Indonesian">"id" // indonesian</option>
-                      <option value="Spanish">"es" // spanish</option>
-                      <option value="Mandarin">"zh" // mandarin</option>
+                      <option value="English">&quot;en&quot; // english</option>
+                      <option value="Indonesian">
+                        &quot;id&quot; // indonesian
+                      </option>
+                      <option value="Spanish">&quot;es&quot; // spanish</option>
+                      <option value="Mandarin">
+                        &quot;zh&quot; // mandarin
+                      </option>
                     </select>
                   </div>
                 </div>
 
-                {/* Enhanced Features Display */}
                 <div className="mt-6 p-4 bg-secondary/30 rounded-lg border border-border">
                   <div className="text-sm font-medium font-mono text-terminal-magenta mb-3 flex items-center">
                     <Code className="w-4 h-4 mr-2" />
@@ -364,7 +418,6 @@ export default function HomePage() {
             </div>
           </div>
 
-          {/* Repository Selector */}
           {status === "authenticated" && (
             <div className="max-w-4xl mx-auto">
               <RepoSelector
@@ -374,12 +427,10 @@ export default function HomePage() {
             </div>
           )}
 
-          {/* Badge Generator */}
           <div className="max-w-4xl mx-auto">
             <BadgeGenerator badges={badges} setBadges={setBadges} />
           </div>
 
-          {/* Enhanced Analysis Display */}
           {(analysisData || generationState.isLoading) && (
             <div className="animate-slide-up">
               <div className="flex items-center justify-between mb-6">
@@ -418,7 +469,6 @@ export default function HomePage() {
             </div>
           )}
 
-          {/* README Preview */}
           {generatedReadme && (
             <div className="animate-slide-up">
               <div className="flex items-center justify-between mb-6">
@@ -444,7 +494,6 @@ export default function HomePage() {
             </div>
           )}
 
-          {/* System Statistics */}
           {analysisData && !generationState.isLoading && (
             <div className="max-w-4xl mx-auto">
               <div className="terminal-window bg-card border border-terminal-green">
@@ -464,29 +513,27 @@ export default function HomePage() {
                       {
                         label: "files_scanned",
                         value:
-                          analysisData.features?.codeQuality?.analyzedFiles ||
-                          0,
+                          analysisData.features.codeQuality.analyzedFiles || 0,
                         color: "terminal-green",
                         icon: FileText,
                       },
                       {
                         label: "api_endpoints",
-                        value: analysisData.features?.api?.endpointCount || 0,
+                        value: analysisData.features.api.endpointCount || 0,
                         color: "terminal-blue",
                         icon: Globe,
                       },
                       {
                         label: "features_detected",
                         value:
-                          analysisData.metadata?.featuresDetected?.length || 0,
+                          analysisData.metadata.featuresDetected.length || 0,
                         color: "terminal-magenta",
                         icon: Zap,
                       },
                       {
                         label: "env_variables",
                         value:
-                          analysisData.features?.environment?.variableCount ||
-                          0,
+                          analysisData.features.environment.variableCount || 0,
                         color: "terminal-yellow",
                         icon: Database,
                       },
@@ -512,7 +559,6 @@ export default function HomePage() {
           )}
         </div>
 
-        {/* Terminal Footer */}
         <footer className="mt-16 text-center">
           <div className="terminal-window bg-card max-w-2xl mx-auto">
             <div className="terminal-content p-6">
@@ -533,7 +579,8 @@ export default function HomePage() {
                 </div>
               </div>
               <div className="text-xs text-terminal-comment font-mono">
-                $ echo "Transform repositories with intelligent analysis"
+                $ echo &quot;Transform repositories with intelligent
+                analysis&quot;
               </div>
             </div>
           </div>

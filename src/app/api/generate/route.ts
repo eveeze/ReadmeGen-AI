@@ -7,6 +7,13 @@ import { getServerSession } from "next-auth/next";
 import { authOptions } from "../auth/[...nextauth]/route";
 import { HistoryEntry, ReadmeTemplate, ReadmeLanguage, Badge } from "@/types";
 
+interface HistoryMetadata {
+  template: ReadmeTemplate;
+  language: ReadmeLanguage;
+  customBadges: number;
+  analysisFeatures: string[];
+}
+
 export async function POST(req: NextRequest) {
   const session = await getServerSession(authOptions);
 
@@ -226,7 +233,7 @@ export async function POST(req: NextRequest) {
             analysis.envVariables.length > 0 && "Environment Configuration",
             analysis.contributionGuide.hasCustomGuide &&
               "Contribution Guidelines",
-          ].filter(Boolean),
+          ].filter(Boolean) as string[],
         },
       },
     };
@@ -235,7 +242,7 @@ export async function POST(req: NextRequest) {
     if (session && session.user?.email) {
       const historyKey = `history:${session.user.email}`;
       const historyEntry: HistoryEntry & {
-        metadata?: any;
+        metadata?: HistoryMetadata;
         features?: string[];
       } = {
         id: `${new Date().toISOString()}-${repoInfo.repo}`,
@@ -251,7 +258,7 @@ export async function POST(req: NextRequest) {
           customBadges: badges.length,
           analysisFeatures: responseData.analysis.metadata.featuresDetected,
         },
-        features: responseData.analysis.metadata.featuresDetected as string[],
+        features: responseData.analysis.metadata.featuresDetected,
       };
 
       await kv.lpush(historyKey, historyEntry);

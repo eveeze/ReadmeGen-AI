@@ -1,6 +1,12 @@
 import { type ClassValue, clsx } from "clsx";
 import { twMerge } from "tailwind-merge";
-import { Badge, CICDConfig, TestConfig, DeploymentConfig } from "@/types";
+import {
+  Badge,
+  CICDConfig,
+  TestConfig,
+  DeploymentConfig,
+  ProjectAnalysis, // Impor tipe ProjectAnalysis
+} from "@/types";
 
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
@@ -29,7 +35,7 @@ export async function copyToClipboard(text: string): Promise<boolean> {
   try {
     await navigator.clipboard.writeText(text);
     return true;
-  } catch (err) {
+  } catch {
     // Fallback for older browsers
     try {
       const textArea = document.createElement("textarea");
@@ -225,7 +231,7 @@ export function formatAnalysisDuration(startTime: Date, endTime: Date): string {
 }
 
 // NEW: Generate comprehensive project statistics
-export function generateProjectStats(analysisData: any) {
+export function generateProjectStats(analysisData: ProjectAnalysis) {
   const stats = {
     complexity: "Unknown" as "Low" | "Medium" | "High" | "Unknown",
     techStack: [] as string[],
@@ -236,19 +242,19 @@ export function generateProjectStats(analysisData: any) {
   // Calculate complexity based on various factors
   let complexityScore = 0;
 
-  if (analysisData.features?.api?.endpointCount > 0) {
-    complexityScore += analysisData.features.api.endpointCount * 2;
+  if (analysisData.apiEndpoints.length > 0) {
+    complexityScore += analysisData.apiEndpoints.length * 2;
   }
 
-  if (analysisData.features?.environment?.variableCount > 0) {
-    complexityScore += analysisData.features.environment.variableCount;
+  if (analysisData.envVariables.length > 0) {
+    complexityScore += analysisData.envVariables.length;
   }
 
-  if (analysisData.features?.codeQuality?.analyzedFiles > 0) {
-    complexityScore += analysisData.features.codeQuality.analyzedFiles;
+  if (analysisData.summarizedCodeSnippets.length > 0) {
+    complexityScore += analysisData.summarizedCodeSnippets.length;
   }
 
-  if (analysisData.frameworks?.length > 0) {
+  if (analysisData.frameworks.length > 0) {
     complexityScore += analysisData.frameworks.length * 5;
   }
 
@@ -273,26 +279,22 @@ export function generateProjectStats(analysisData: any) {
   // Calculate maturity score
   let maturityScore = 0;
 
-  if (analysisData.features?.cicd) maturityScore += 20;
-  if (analysisData.features?.testing) maturityScore += 25;
-  if (analysisData.features?.deployment) maturityScore += 15;
-  if (analysisData.features?.contribution?.hasGuide) maturityScore += 10;
-  if (analysisData.features?.contribution?.hasCodeOfConduct)
-    maturityScore += 10;
-  if (analysisData.features?.environment?.variableCount > 0)
-    maturityScore += 10;
+  if (analysisData.cicdConfig) maturityScore += 20;
+  if (analysisData.testConfig) maturityScore += 25;
+  if (analysisData.deploymentConfig) maturityScore += 15;
+  if (analysisData.contributionGuide.hasCustomGuide) maturityScore += 10;
+  if (analysisData.contributionGuide.codeOfConduct) maturityScore += 10;
+  if (analysisData.envVariables.length > 0) maturityScore += 10;
   if (analysisData.hasDocumentation) maturityScore += 10;
 
   stats.maturityScore = Math.min(maturityScore, 100);
 
   // Compile features list
-  if (analysisData.features?.cicd) stats.features.push("CI/CD Pipeline");
-  if (analysisData.features?.testing) stats.features.push("Automated Testing");
-  if (analysisData.features?.deployment)
-    stats.features.push("Deployment Ready");
-  if (analysisData.features?.api?.endpointCount > 0)
-    stats.features.push("REST API");
-  if (analysisData.features?.environment?.variableCount > 0)
+  if (analysisData.cicdConfig) stats.features.push("CI/CD Pipeline");
+  if (analysisData.testConfig) stats.features.push("Automated Testing");
+  if (analysisData.deploymentConfig) stats.features.push("Deployment Ready");
+  if (analysisData.apiEndpoints.length > 0) stats.features.push("REST API");
+  if (analysisData.envVariables.length > 0)
     stats.features.push("Environment Config");
 
   return stats;

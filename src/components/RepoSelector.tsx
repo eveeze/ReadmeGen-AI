@@ -23,6 +23,7 @@ export function RepoSelector({ onSelect, disabled }: RepoSelectorProps) {
         setRepos(data);
       } catch (error) {
         console.error("Could not fetch user repos");
+        console.error(error);
       } finally {
         setLoading(false);
       }

@@ -6,10 +6,6 @@ import {
   CodeSnippet,
   ReadmeLanguage,
   Badge,
-  CICDConfig,
-  TestConfig,
-  DeploymentConfig,
-  ProjectLogo,
 } from "@/types";
 
 export class AIReadmeGenerator {
@@ -35,7 +31,6 @@ export class AIReadmeGenerator {
       packageManagers,
       dependencies,
       scripts,
-      keyFiles,
       summarizedCodeSnippets,
       fullFileTree,
       apiEndpoints,
