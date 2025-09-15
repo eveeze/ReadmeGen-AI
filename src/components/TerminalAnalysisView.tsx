@@ -11,6 +11,11 @@ import {
   Code,
   Settings,
   Send,
+  GitBranch,
+  TestTube,
+  Rocket,
+  Globe,
+  Package,
 } from "lucide-react";
 import { ReadmePreview } from "./ReadmePreview";
 import {
@@ -23,6 +28,82 @@ import {
 } from "@/types";
 import { LoadingSpinner } from "./LoadingSpinner";
 
+// --- NEW COMPONENT: AnalysisSummary ---
+const AnalysisSummary: React.FC<{ analysis: ProjectAnalysis }> = ({
+  analysis,
+}) => {
+  const {
+    mainLanguage,
+    frameworks,
+    cicdConfig,
+    testConfig,
+    deploymentConfig,
+    apiEndpoints,
+  } = analysis;
+
+  const renderCheck = (condition: boolean | undefined) =>
+    condition ? (
+      <span className="text-terminal-green">✓</span>
+    ) : (
+      <span className="text-terminal-red">✗</span>
+    );
+
+  return (
+    <div className="mt-4 p-4 border border-dashed border-border rounded bg-secondary/30 animate-fade-in">
+      <h3 className="text-terminal-yellow font-bold font-mono mb-2">
+        [PROJECT OVERVIEW]
+      </h3>
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-1 text-sm">
+        <div className="flex items-center space-x-2">
+          <Package className="w-4 h-4 text-terminal-cyan flex-shrink-0" />
+          <span>Language:</span>
+          <span className="font-bold text-foreground truncate">
+            {mainLanguage}
+          </span>
+        </div>
+        <div className="flex items-center space-x-2">
+          <GitBranch className="w-4 h-4 text-terminal-cyan flex-shrink-0" />
+          <span>CI/CD:</span>
+          {renderCheck(!!cicdConfig)}
+          <span className="font-bold text-foreground truncate">
+            {cicdConfig?.platform || "Not Detected"}
+          </span>
+        </div>
+        <div className="flex items-center space-x-2">
+          <Code className="w-4 h-4 text-terminal-cyan flex-shrink-0" />
+          <span>Frameworks:</span>
+          <span className="font-bold text-foreground truncate">
+            {frameworks.join(", ") || "N/A"}
+          </span>
+        </div>
+        <div className="flex items-center space-x-2">
+          <TestTube className="w-4 h-4 text-terminal-cyan flex-shrink-0" />
+          <span>Testing:</span>
+          {renderCheck(!!testConfig)}
+          <span className="font-bold text-foreground truncate">
+            {testConfig?.framework || "Not Detected"}
+          </span>
+        </div>
+        <div className="flex items-center space-x-2">
+          <Rocket className="w-4 h-4 text-terminal-cyan flex-shrink-0" />
+          <span>Deployment:</span>
+          {renderCheck(!!deploymentConfig)}
+          <span className="font-bold text-foreground truncate">
+            {deploymentConfig?.platform || "Not Detected"}
+          </span>
+        </div>
+        <div className="flex items-center space-x-2">
+          <Globe className="w-4 h-4 text-terminal-cyan flex-shrink-0" />
+          <span>API Endpoints:</span>
+          <span className="font-bold text-foreground truncate">
+            {apiEndpoints.length} detected
+          </span>
+        </div>
+      </div>
+    </div>
+  );
+};
+
 interface TerminalAnalysisViewProps {
   url: string;
   template: ReadmeTemplate;
@@ -30,9 +111,8 @@ interface TerminalAnalysisViewProps {
   badges: Badge[];
   logoUrl: string;
   isInteractive: boolean;
-  generationState: GenerationState & { progress: string[] }; // Pastikan tipe progress adalah array string
+  generationState: GenerationState;
   generatedReadme: string;
-  analysisData?: ProjectAnalysis | null;
   questions?: AgenticQuestion[];
   onReAnalyze: () => void;
   onUrlChange: (url: string) => void;
@@ -52,7 +132,6 @@ const TerminalAnalysisView: React.FC<TerminalAnalysisViewProps> = ({
   isInteractive,
   generationState,
   generatedReadme,
-  analysisData,
   questions = [],
   onReAnalyze,
   onUrlChange,
@@ -75,9 +154,21 @@ const TerminalAnalysisView: React.FC<TerminalAnalysisViewProps> = ({
   const terminalEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
+  const showAnalysisSummary =
+    !generationState.isLoading &&
+    generationState.analysis &&
+    !generatedReadme &&
+    !isAnswering &&
+    !(questions && questions.length > 0);
+
   useEffect(() => {
     terminalEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [generationState.progress, isAnswering, currentQuestionIndex]);
+  }, [
+    generationState.progress,
+    isAnswering,
+    currentQuestionIndex,
+    showAnalysisSummary,
+  ]);
 
   useEffect(() => {
     if (isAnswering) {
@@ -112,8 +203,7 @@ const TerminalAnalysisView: React.FC<TerminalAnalysisViewProps> = ({
     setUserAnswers(newAnswers);
     setInputValue("");
 
-    // Perbarui state induk dengan jawaban yang baru
-    // Ini memungkinkan page.tsx untuk melacak log jawaban
+    // This direct mutation is not ideal, but we keep it to match the old code's logic
     if (generationState.progress) {
       generationState.progress.push(`$ ${inputValue.trim()}`);
     }
@@ -152,7 +242,7 @@ const TerminalAnalysisView: React.FC<TerminalAnalysisViewProps> = ({
     setShowReadme(false);
   };
 
-  const getLinePrefix = (line: string): JSX.Element => {
+  const getLinePrefix = (line: string): React.ReactElement => {
     if (line.startsWith("$"))
       return <span className="text-terminal-green mr-2 flex-shrink-0">$</span>;
     if (line.startsWith("✓"))
@@ -369,6 +459,10 @@ const TerminalAnalysisView: React.FC<TerminalAnalysisViewProps> = ({
                   </span>
                 </div>
               ))}
+
+              {showAnalysisSummary && generationState.analysis && (
+                <AnalysisSummary analysis={generationState.analysis} />
+              )}
 
               {isAnswering && currentQuestionIndex < questions.length && (
                 <div className="mt-4">

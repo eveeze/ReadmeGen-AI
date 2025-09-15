@@ -1,4 +1,6 @@
+// src/lib/github.ts
 import axios from "axios";
+import yaml from "js-yaml";
 import {
   GitHubRepo,
   FileStructure,
@@ -8,9 +10,12 @@ import {
   EnvironmentVariable,
   Badge,
   CICDConfig,
+  CICDJob,
   TestConfig,
   DeploymentConfig,
   ProjectLogo,
+  CategorizedDependencies,
+  VercelConfig,
 } from "@/types";
 
 const GITHUB_API_BASE = "https://api.github.com";
@@ -21,6 +26,21 @@ interface PackageJson {
   dependencies?: { [key: string]: string };
   devDependencies?: { [key: string]: string };
 }
+
+// Interface untuk struktur dasar file workflow GitHub Actions
+interface GitHubWorkflow {
+  name?: string;
+  jobs?: {
+    [jobName: string]: {
+      name?: string;
+      steps?: Array<{
+        name?: string;
+        run?: string;
+      }>;
+    };
+  };
+}
+
 type ProgressCallback = (message: string) => void;
 
 export class GitHubAnalyzer {
@@ -150,57 +170,120 @@ export class GitHubAnalyzer {
     }
   }
 
-  // NEW: Detect CI/CD configuration
+  private categorizeDependencies(
+    dependencies: Record<string, string>
+  ): CategorizedDependencies {
+    const categories: Record<string, string[]> = {
+      "UI Framework": ["react", "vue", "angular", "svelte", "next", "solid-js"],
+      "State Management": [
+        "redux",
+        "zustand",
+        "mobx",
+        "vuex",
+        "recoil",
+        "pinia",
+      ],
+      Styling: [
+        "tailwindcss",
+        "styled-components",
+        "sass",
+        "less",
+        "emotion",
+        "postcss",
+      ],
+      Testing: [
+        "jest",
+        "mocha",
+        "cypress",
+        "playwright",
+        "vitest",
+        "testing-library",
+      ],
+      "Linting/Formatting": ["eslint", "prettier", "stylelint"],
+      "ORM/ODM": ["prisma", "mongoose", "sequelize", "typeorm", "drizzle-orm"],
+      "API/GraphQL": [
+        "axios",
+        "graphql",
+        "apollo-client",
+        "react-query",
+        "trpc",
+        "swr",
+      ],
+      "Build Tools": [
+        "webpack",
+        "vite",
+        "rollup",
+        "esbuild",
+        "turbopack",
+        "parcel",
+      ],
+    };
+
+    const categorized: CategorizedDependencies = {};
+
+    for (const dep in dependencies) {
+      let foundCategory = "Other";
+      for (const category in categories) {
+        if (categories[category].some((keyword) => dep.includes(keyword))) {
+          foundCategory = category;
+          break;
+        }
+      }
+      if (!categorized[foundCategory]) {
+        categorized[foundCategory] = [];
+      }
+      categorized[foundCategory].push(dep);
+    }
+    return categorized;
+  }
+
   private async detectCICD(
     owner: string,
     repo: string,
     structure: FileStructure[]
   ): Promise<CICDConfig | undefined> {
-    const cicdFiles = structure.filter((file) => {
-      const path = file.path.toLowerCase();
-      return (
-        path.includes(".github/workflows") ||
-        path.includes(".travis.yml") ||
-        path.includes(".circleci") ||
-        path.includes("jenkinsfile") ||
-        path.includes(".gitlab-ci.yml")
-      );
-    });
-
-    if (cicdFiles.length === 0) return undefined;
-
-    // Check for GitHub Actions
-    const githubActionsFiles = cicdFiles.filter((file) =>
-      file.path.includes(".github/workflows")
+    const githubActionsFiles = structure.filter(
+      (file) =>
+        file.path.startsWith(".github/workflows/") &&
+        (file.path.endsWith(".yml") || file.path.endsWith(".yaml"))
     );
 
     if (githubActionsFiles.length > 0) {
+      this.progressCallback("Parsing GitHub Actions workflows...");
       const workflows: string[] = [];
+      const jobs: CICDJob[] = [];
       let hasTesting = false;
       let hasDeployment = false;
 
       for (const file of githubActionsFiles.slice(0, 3)) {
-        // Analyze first 3 workflow files
+        // Limit to 3 files
         const content = await this.getFileContent(owner, repo, file.path);
         if (content) {
-          const workflowName = file.name
-            .replace(".yml", "")
-            .replace(".yaml", "");
-          workflows.push(workflowName);
+          try {
+            // FIX 1: Using a specific type instead of 'any'
+            const workflowConfig = yaml.load(content) as GitHubWorkflow;
+            workflows.push(
+              workflowConfig.name || file.name.replace(/\.ya?ml$/, "")
+            );
 
-          if (
-            content.includes("test") ||
-            content.includes("jest") ||
-            content.includes("pytest")
-          ) {
-            hasTesting = true;
-          }
-          if (
-            content.includes("deploy") ||
-            content.includes("vercel") ||
-            content.includes("netlify")
-          ) {
-            hasDeployment = true;
+            if (workflowConfig.jobs) {
+              for (const jobName in workflowConfig.jobs) {
+                const job = workflowConfig.jobs[jobName];
+                // FIX 2: Defining the type for 'step' instead of 'any'
+                const jobSteps =
+                  job.steps?.map((step: { name?: string; run?: string }) => ({
+                    name: step.name,
+                    run: step.run,
+                  })) || [];
+                jobs.push({ name: job.name || jobName, steps: jobSteps });
+
+                const jobContent = JSON.stringify(job).toLowerCase();
+                if (jobContent.includes("test")) hasTesting = true;
+                if (jobContent.includes("deploy")) hasDeployment = true;
+              }
+            }
+          } catch (e) {
+            console.warn(`Could not parse YAML file: ${file.path}`, e);
           }
         }
       }
@@ -209,31 +292,77 @@ export class GitHubAnalyzer {
         platform: "github-actions",
         configFile: ".github/workflows",
         workflows,
+        jobs,
         hasTesting,
         hasDeployment,
-      };
-    }
-
-    // Check for other CI/CD platforms
-    if (structure.some((f) => f.name === ".travis.yml")) {
-      return {
-        platform: "travis",
-        configFile: ".travis.yml",
-        workflows: ["Travis CI"],
-        hasTesting: true,
-        hasDeployment: false,
       };
     }
 
     return undefined;
   }
 
-  // NEW: Detect test configuration
+  private async detectDeploymentConfig(
+    owner: string,
+    repo: string,
+    structure: FileStructure[],
+    packageJson?: PackageJson | null
+  ): Promise<DeploymentConfig | undefined> {
+    const vercelFile = structure.find((f) => f.name === "vercel.json");
+    if (vercelFile) {
+      this.progressCallback("Parsing vercel.json...");
+      const content = await this.getFileContent(owner, repo, vercelFile.path);
+      let parsedConfig: VercelConfig | undefined = undefined;
+      if (content) {
+        try {
+          const config = JSON.parse(content);
+          parsedConfig = {
+            framework: config.framework,
+            buildCommand: config.build?.command,
+            outputDirectory: config.outputDirectory,
+            nodeVersion: config.engines?.node,
+          };
+        } catch (e) {
+          console.warn("Could not parse vercel.json", e);
+        }
+      }
+      return {
+        platform: "vercel",
+        configFiles: ["vercel.json"],
+        requiresEnv: structure.some((f) => f.name.includes(".env")),
+        buildCommand: parsedConfig?.buildCommand || packageJson?.scripts?.build,
+        parsedConfig,
+      };
+    }
+
+    if (structure.some((f) => f.name === "netlify.toml")) {
+      return {
+        platform: "netlify",
+        configFiles: ["netlify.toml"],
+        requiresEnv: structure.some((f) => f.name.includes(".env")),
+        buildCommand: packageJson?.scripts?.build,
+      };
+    }
+
+    if (structure.some((f) => f.name.toLowerCase() === "procfile")) {
+      return {
+        platform: "heroku",
+        configFiles: ["Procfile"],
+        requiresEnv: true,
+      };
+    }
+
+    if (structure.some((f) => f.name.toLowerCase() === "dockerfile")) {
+      return { platform: "docker", configFiles: ["Dockerfile"] };
+    }
+
+    return undefined;
+  }
+
   private async detectTestConfig(
     owner: string,
     repo: string,
     structure: FileStructure[],
-    packageJson?: PackageJson
+    packageJson?: PackageJson | null
   ): Promise<TestConfig | undefined> {
     const testFiles = structure.filter((file) => {
       const path = file.path.toLowerCase();
@@ -257,8 +386,7 @@ export class GitHubAnalyzer {
     let e2eTests = false;
     let unitTests = false;
 
-    // Detect from package.json scripts
-    if (packageJson?.scripts) {
+    if (packageJson && packageJson.scripts) {
       const scripts = packageJson.scripts;
       if (scripts.test) commands.push("npm test");
       if (scripts["test:unit"]) {
@@ -273,10 +401,9 @@ export class GitHubAnalyzer {
         coverage = true;
       }
 
-      // Detect framework from dependencies
       const allDeps = {
-        ...packageJson.dependencies,
-        ...packageJson.devDependencies,
+        ...(packageJson.dependencies || {}),
+        ...(packageJson.devDependencies || {}),
       };
       if (allDeps.jest) framework = "Jest";
       else if (allDeps.mocha) framework = "Mocha";
@@ -285,7 +412,6 @@ export class GitHubAnalyzer {
       else if (allDeps.vitest) framework = "Vitest";
     }
 
-    // Detect from file extensions
     if (
       testFiles.some(
         (f) => f.name.includes(".test.") || f.name.includes(".spec.")
@@ -301,84 +427,27 @@ export class GitHubAnalyzer {
       e2eTests = true;
     }
 
-    return {
-      framework,
-      testFiles: testFiles.slice(0, 10).map((f) => f.path),
-      commands: commands.length > 0 ? commands : ["npm test"],
-      coverage,
-      e2eTests,
-      unitTests,
-    };
-  }
-
-  // NEW: Detect deployment configuration
-  private detectDeploymentConfig(
-    structure: FileStructure[],
-    packageJson?: PackageJson
-  ): DeploymentConfig | undefined {
-    const deploymentFiles = structure.filter((file) => {
-      const name = file.name.toLowerCase();
-      return (
-        name === "vercel.json" ||
-        name === "netlify.toml" ||
-        name === "_redirects" ||
-        name === "procfile" ||
-        name === "dockerfile" ||
-        name === "docker-compose.yml" ||
-        name === "app.yaml" ||
-        name === "serverless.yml"
-      );
-    });
-
-    if (deploymentFiles.length === 0) return undefined;
-
-    let platform: DeploymentConfig["platform"] = "vercel"; // default
-    let requiresEnv = false;
-    let buildCommand = "";
-
-    // Detect platform
-    if (deploymentFiles.some((f) => f.name === "vercel.json")) {
-      platform = "vercel";
-    } else if (
-      deploymentFiles.some(
-        (f) => f.name === "netlify.toml" || f.name === "_redirects"
-      )
-    ) {
-      platform = "netlify";
-    } else if (
-      deploymentFiles.some((f) => f.name.toLowerCase() === "procfile")
-    ) {
-      platform = "heroku";
-    } else if (deploymentFiles.some((f) => f.name === "dockerfile")) {
-      platform = "docker";
-    }
-
-    // Check for build command
-    if (packageJson?.scripts?.build) {
-      buildCommand = "npm run build";
-    }
-
-    // Check if requires environment variables
     if (
-      structure.some(
-        (f) => f.name === ".env.example" || f.name === ".env.sample"
-      )
+      framework !== "Unknown" ||
+      commands.length > 0 ||
+      unitTests ||
+      e2eTests
     ) {
-      requiresEnv = true;
+      return {
+        framework,
+        testFiles: testFiles.slice(0, 10).map((f) => f.path),
+        commands: commands.length > 0 ? commands : ["npm test"],
+        coverage,
+        e2eTests,
+        unitTests,
+      };
     }
 
-    return {
-      platform,
-      configFiles: deploymentFiles.map((f) => f.name),
-      requiresEnv,
-      buildCommand,
-    };
+    return undefined;
   }
 
-  // NEW: Generate project logo
   private generateProjectLogo(repository: GitHubRepo): ProjectLogo {
-    const name = repository.name.toLowerCase();
-    const firstLetter = name.charAt(0).toUpperCase();
+    const firstLetter = repository.name.charAt(0).toUpperCase();
     const colors = this.getColorScheme(repository.language, repository.topics);
 
     const svgContent = `
@@ -403,7 +472,6 @@ export class GitHubAnalyzer {
     };
   }
 
-  // NEW: Get color scheme based on language and topics
   private getColorScheme(
     language: string,
     topics: string[]
@@ -424,7 +492,6 @@ export class GitHubAnalyzer {
       Ruby: { primaryColor: "#cc342d", secondaryColor: "#e74c3c" },
     };
 
-    // Check topics for frameworks
     const topicColors = topics.find((topic) =>
       ["react", "vue", "angular", "svelte", "nextjs"].includes(
         topic.toLowerCase()
@@ -439,10 +506,9 @@ export class GitHubAnalyzer {
       return languageColors[language];
     }
 
-    return { primaryColor: "#3498db", secondaryColor: "#2980b9" }; // Default blue
+    return { primaryColor: "#3498db", secondaryColor: "#2980b9" };
   }
 
-  // NEW: Enhanced API endpoint detection
   private async detectApiEndpoints(
     owner: string,
     repo: string,
@@ -452,8 +518,6 @@ export class GitHubAnalyzer {
 
     for (const snippet of codeSnippets) {
       const content = snippet.content.toLowerCase();
-
-      // Express.js patterns
       const expressRoutes = content.match(
         /(app|router)\.(get|post|put|delete|patch)\s*\(\s*['"`]([^'"`]+)['"`]/g
       );
@@ -478,20 +542,21 @@ export class GitHubAnalyzer {
         });
       }
 
-      // Next.js API routes
       if (
         snippet.fileName.includes("api/") &&
-        snippet.fileName.includes("route.")
+        (snippet.fileName.includes("route.") ||
+          snippet.fileName.includes("index."))
       ) {
         const methods = ["GET", "POST", "PUT", "DELETE", "PATCH"];
         methods.forEach((method) => {
           if (
-            content.includes(`export async function ${method.toLowerCase()}`)
+            content.includes(`export async function ${method.toLowerCase()}`) ||
+            content.includes(`function ${method.toLowerCase()}(`)
           ) {
             const apiPath = snippet.fileName
               .replace(/^.*\/api\//, "/api/")
-              .replace(/\/route\.(js|ts)$/, "")
-              .replace(/\/page\.(js|ts)$/, "");
+              .replace(/\/(route|index)\.(js|ts|tsx)$/, "")
+              .replace(/\/page\.(js|ts|tsx)$/, "");
 
             endpoints.push({
               path: apiPath || "/api/endpoint",
@@ -503,39 +568,18 @@ export class GitHubAnalyzer {
           }
         });
       }
-
-      // FastAPI patterns (Python)
-      const fastapiRoutes = content.match(
-        /@app\.(get|post|put|delete|patch)\s*\(\s*['"`]([^'"`]+)['"`]/g
-      );
-      if (fastapiRoutes) {
-        fastapiRoutes.forEach((route) => {
-          const match = route.match(
-            /@app\.(get|post|put|delete|patch)\s*\(\s*['"`]([^'"`]+)['"`]/
-          );
-          if (match) {
-            endpoints.push({
-              path: match[2],
-              method: match[1].toUpperCase(),
-              description: `FastAPI ${match[1].toUpperCase()} endpoint`,
-              parameters: this.extractParameters(match[2]),
-              responses: ["200 OK", "422 Validation Error"],
-            });
-          }
-        });
-      }
     }
-
-    return endpoints.slice(0, 10); // Limit to 10 endpoints
+    return [
+      ...new Map(
+        endpoints.map((item) => [item.path + item.method, item])
+      ).values(),
+    ].slice(0, 10);
   }
 
-  // NEW: Extract parameters from URL path
   private extractParameters(
     path: string
   ): Array<{ name: string; type: string; required: boolean }> {
     const params: Array<{ name: string; type: string; required: boolean }> = [];
-
-    // Express/Next.js dynamic routes
     const dynamicParams = path.match(/\[([^\]]+)\]|:([^\/]+)/g);
     if (dynamicParams) {
       dynamicParams.forEach((param) => {
@@ -551,15 +595,12 @@ export class GitHubAnalyzer {
     return params;
   }
 
-  // NEW: Enhanced environment variable detection
   private async detectEnvVariables(
     owner: string,
     repo: string,
     structure: FileStructure[]
   ): Promise<EnvironmentVariable[]> {
     const envVars: EnvironmentVariable[] = [];
-
-    // Check .env.example or .env.sample files
     const envFiles = structure.filter(
       (file) =>
         file.name === ".env.example" ||
@@ -588,7 +629,6 @@ export class GitHubAnalyzer {
     return envVars;
   }
 
-  // NEW: Get environment variable description
   private getEnvDescription(key: string): string {
     const descriptions: Record<string, string> = {
       DATABASE_URL: "Database connection string",
@@ -610,7 +650,6 @@ export class GitHubAnalyzer {
     return descriptions[key] || "Environment variable";
   }
 
-  // Enhanced badge generation
   private generateBadges(
     repo: GitHubRepo & { owner: string },
     cicdConfig?: CICDConfig,
@@ -620,7 +659,6 @@ export class GitHubAnalyzer {
     const badges: Badge[] = [];
     const repoPath = `${repo.owner}/${repo.name}`;
 
-    // Existing badges
     if (repo.license) {
       badges.push({
         name: "License",
@@ -637,14 +675,6 @@ export class GitHubAnalyzer {
       category: "social",
     });
 
-    badges.push({
-      name: "Forks",
-      url: `https://img.shields.io/github/forks/${repoPath}?style=social`,
-      link: `${repo.html_url}/network/members`,
-      category: "social",
-    });
-
-    // NEW: CI/CD badges
     if (cicdConfig?.platform === "github-actions") {
       badges.push({
         name: "CI",
@@ -654,21 +684,10 @@ export class GitHubAnalyzer {
       });
     }
 
-    // NEW: Test coverage badge (if tests detected)
-    if (testConfig?.coverage) {
-      badges.push({
-        name: "Coverage",
-        url: `https://img.shields.io/codecov/c/github/${repoPath}`,
-        link: `https://codecov.io/gh/${repoPath}`,
-        category: "coverage",
-      });
-    }
-
-    // NEW: Deployment badges
     if (deploymentConfig?.platform === "vercel") {
       badges.push({
         name: "Deploy",
-        url: `https://img.shields.io/badge/deploy-vercel-black?logo=vercel`,
+        url: `https://vercel.com/button`,
         link: `https://vercel.com/new/clone?repository-url=${repo.html_url}`,
         category: "deployment",
       });
@@ -689,6 +708,7 @@ export class GitHubAnalyzer {
         .filter(
           (path: string) => !ignoredDirs.some((dir) => path.startsWith(dir))
         )
+        .slice(0, 100) // Limit to first 100 files for performance
         .join("\n");
     } catch (error) {
       console.warn("Could not fetch recursive file tree.", error);
@@ -699,10 +719,6 @@ export class GitHubAnalyzer {
   private getFilePriority(filePath: string): number {
     const priorityPatterns: { [key: string]: number } = {
       "package.json": 10,
-      "requirements.txt": 10,
-      "pom.xml": 10,
-      "build.gradle": 10,
-      "composer.json": 10,
       "docker-compose.yml": 9,
       dockerfile: 9,
       "src/main.": 8,
@@ -755,52 +771,37 @@ export class GitHubAnalyzer {
     return codeSnippets;
   }
 
-  // NEW: Detect code features
   private detectCodeFeatures(content: string): string[] {
     const features: string[] = [];
     const lowerContent = content.toLowerCase();
 
-    // Framework detection
     if (lowerContent.includes("react") || lowerContent.includes("jsx"))
       features.push("React");
     if (lowerContent.includes("vue")) features.push("Vue");
     if (lowerContent.includes("angular")) features.push("Angular");
     if (lowerContent.includes("express")) features.push("Express");
     if (lowerContent.includes("next")) features.push("Next.js");
-
-    // Database
     if (lowerContent.includes("mongoose") || lowerContent.includes("mongodb"))
       features.push("MongoDB");
     if (lowerContent.includes("sequelize") || lowerContent.includes("postgres"))
       features.push("PostgreSQL");
     if (lowerContent.includes("prisma")) features.push("Prisma");
-
-    // Authentication
     if (lowerContent.includes("auth") || lowerContent.includes("jwt"))
       features.push("Authentication");
-    if (lowerContent.includes("passport")) features.push("Passport.js");
-
-    // API
     if (lowerContent.includes("axios") || lowerContent.includes("fetch"))
       features.push("API Integration");
     if (lowerContent.includes("graphql")) features.push("GraphQL");
-
-    // Testing
     if (lowerContent.includes("jest") || lowerContent.includes("test"))
       features.push("Testing");
-    if (lowerContent.includes("cypress") || lowerContent.includes("playwright"))
-      features.push("E2E Testing");
 
-    return features;
+    return [...new Set(features)];
   }
 
-  // NEW: Assess code complexity
   private assessComplexity(content: string): "low" | "medium" | "high" {
     const lines = content.split("\n").length;
     const functions = (content.match(/function|=>|\bdef\b|\bclass\b/g) || [])
       .length;
     const imports = (content.match(/import|require|from/g) || []).length;
-
     const complexity = lines + functions * 2 + imports;
 
     if (complexity < 100) return "low";
@@ -808,29 +809,19 @@ export class GitHubAnalyzer {
     return "high";
   }
 
-  // NEW: Extract main function
   private extractMainFunction(content: string): string {
-    // JavaScript/TypeScript patterns
     const jsFunction =
       content.match(/export\s+(default\s+)?function\s+(\w+)/) ||
       content.match(/const\s+(\w+)\s*=.*?=>/);
     if (jsFunction) return jsFunction[jsFunction.length - 1];
 
-    // Python patterns
     const pyFunction =
       content.match(/def\s+main\s*\(/) || content.match(/def\s+(\w+)\s*\(/);
     if (pyFunction) return pyFunction[1] || "main";
 
-    // Java patterns
-    const javaFunction =
-      content.match(/public\s+static\s+void\s+main/) ||
-      content.match(/public\s+class\s+(\w+)/);
-    if (javaFunction) return javaFunction[1] || "main";
-
     return "main";
   }
 
-  // NEW: Generate contribution guide
   private generateContributionGuide(
     structure: FileStructure[],
     packageManagers: string[],
@@ -840,16 +831,11 @@ export class GitHubAnalyzer {
     suggestedSteps: string[];
     codeOfConduct: boolean;
   } {
-    const hasCustomGuide = structure.some(
-      (f) =>
-        f.name.toLowerCase() === "contributing.md" ||
-        f.name.toLowerCase() === "contribution.md"
+    const hasCustomGuide = structure.some((f) =>
+      f.name.toLowerCase().startsWith("contributing")
     );
-
-    const codeOfConduct = structure.some(
-      (f) =>
-        f.name.toLowerCase() === "code_of_conduct.md" ||
-        f.name.toLowerCase() === "code-of-conduct.md"
+    const codeOfConduct = structure.some((f) =>
+      f.name.toLowerCase().startsWith("code_of_conduct")
     );
 
     const suggestedSteps: string[] = [
@@ -857,27 +843,11 @@ export class GitHubAnalyzer {
       "Create a feature branch (`git checkout -b feature/amazing-feature`)",
     ];
 
-    // Add setup steps based on package manager
-    if (packageManagers.includes("npm")) {
+    if (packageManagers.includes("npm"))
       suggestedSteps.push("Install dependencies (`npm install`)");
-    } else if (packageManagers.includes("yarn")) {
-      suggestedSteps.push("Install dependencies (`yarn install`)");
-    } else if (packageManagers.includes("pip")) {
-      suggestedSteps.push(
-        "Create virtual environment and install dependencies"
-      );
-    }
-
-    // Add development steps based on available scripts
-    if (scripts.dev) {
+    if (scripts.dev)
       suggestedSteps.push("Start development server (`npm run dev`)");
-    }
-    if (scripts.test) {
-      suggestedSteps.push("Run tests (`npm test`)");
-    }
-    if (scripts.lint) {
-      suggestedSteps.push("Run linting (`npm run lint`)");
-    }
+    if (scripts.test) suggestedSteps.push("Run tests (`npm test`)");
 
     suggestedSteps.push(
       "Make your changes",
@@ -886,18 +856,44 @@ export class GitHubAnalyzer {
       "Open a Pull Request"
     );
 
-    return {
-      hasCustomGuide,
-      suggestedSteps,
-      codeOfConduct,
-    };
+    return { hasCustomGuide, suggestedSteps, codeOfConduct };
+  }
+
+  private async getFileStructureRecursive(
+    owner: string,
+    repo: string
+  ): Promise<FileStructure[]> {
+    try {
+      const response = await axios.get(
+        `${GITHUB_API_BASE}/repos/${owner}/${repo}/git/trees/main?recursive=1`,
+        { headers: this.getHeaders() }
+      );
+      const ignored = [".git", "node_modules", ".next", "dist", "build"];
+      return response.data.tree
+        .filter(
+          (node: { path: string }) =>
+            !ignored.some((dir) => node.path.startsWith(dir))
+        )
+        .map((node: { path: string; type: "blob" | "tree"; size: number }) => ({
+          name: node.path.split("/").pop() || "",
+          path: node.path,
+          type: node.type === "tree" ? "dir" : "file",
+          size: node.size,
+        }));
+    } catch (error) {
+      console.warn(
+        "Could not fetch recursive file tree, falling back to root level.",
+        error
+      );
+      return this.getFileStructure(owner, repo, "");
+    }
   }
 
   async analyzeProject(owner: string, repo: string): Promise<ProjectAnalysis> {
     this.progressCallback("Starting project analysis...");
     const repository = await this.getRepository(owner, repo);
     this.progressCallback("Analyzing file structure...");
-    const structure = await this.getFileStructure(owner, repo);
+    const allFiles = await this.getFileStructureRecursive(owner, repo);
 
     this.progressCallback("Generating full file tree...");
     const fullFileTree = await this.generateFileTree(owner, repo);
@@ -906,32 +902,23 @@ export class GitHubAnalyzer {
     const summarizedCodeSnippets = await this.analyzeCode(
       owner,
       repo,
-      structure
+      allFiles
     );
 
-    const keyFiles = structure
+    const keyFiles = allFiles
       .filter((file) => file.type === "file")
-      .map((file) => file.name.toLowerCase())
-      .filter((name) =>
-        [
-          "package.json",
-          "requirements.txt",
-          "composer.json",
-          "dockerfile",
-          "docker-compose.yml",
-          "readme.md",
-        ].includes(name)
-      );
+      .map((file) => file.name.toLowerCase());
 
-    const frameworks: string[] = [];
-    const packageManagers: string[] = [];
+    let packageJson: PackageJson | null = null;
     let dependencies: Record<string, string> = {};
     let scripts: Record<string, string> = {};
-    let packageJson: PackageJson | null = null;
+    let frameworks: string[] = [];
+    // FIX 3: Use 'const' as packageManagers is never reassigned
+    const packageManagers: string[] = [];
+    let categorizedDependencies: CategorizedDependencies = {};
 
     if (keyFiles.includes("package.json")) {
       this.progressCallback("Parsing package.json...");
-      packageManagers.push("npm"); // Default, can be refined
       const packageContent = await this.getFileContent(
         owner,
         repo,
@@ -941,21 +928,17 @@ export class GitHubAnalyzer {
         try {
           packageJson = JSON.parse(packageContent);
           dependencies = {
-            ...packageJson?.dependencies,
-            ...packageJson?.devDependencies,
+            ...(packageJson?.dependencies || {}),
+            ...(packageJson?.devDependencies || {}),
           };
           scripts = packageJson?.scripts || {};
-
-          // Detect frameworks and refine package manager
-          if (dependencies["next"]) frameworks.push("Next.js");
-          if (dependencies["react"]) frameworks.push("React");
-          if (dependencies["vue"]) frameworks.push("Vue");
-          if (dependencies["@angular/core"]) frameworks.push("Angular");
-          if (dependencies["express"]) frameworks.push("Express");
-          if (structure.some((f) => f.name === "yarn.lock"))
-            packageManagers.push("yarn");
-          if (structure.some((f) => f.name === "pnpm-lock.yaml"))
-            packageManagers.push("pnpm");
+          packageManagers.push("npm");
+          if (keyFiles.includes("yarn.lock")) packageManagers.push("yarn");
+          if (keyFiles.includes("pnpm-lock.yaml")) packageManagers.push("pnpm");
+          this.progressCallback("Categorizing dependencies...");
+          categorizedDependencies = this.categorizeDependencies(dependencies);
+          frameworks = categorizedDependencies["UI Framework"] || [];
+          // FIX 4: Remove unused 'e' variable in catch block
         } catch {
           this.progressCallback("Warning: Failed to parse package.json.");
         }
@@ -971,21 +954,17 @@ export class GitHubAnalyzer {
       deploymentConfig,
       envVariables,
       apiEndpoints,
-      projectLogo,
     ] = await Promise.all([
-      this.detectCICD(owner, repo, structure),
-      this.detectTestConfig(owner, repo, structure, packageJson || undefined),
-      Promise.resolve(
-        this.detectDeploymentConfig(structure, packageJson || undefined)
-      ),
-      this.detectEnvVariables(owner, repo, structure),
+      this.detectCICD(owner, repo, allFiles),
+      this.detectTestConfig(owner, repo, allFiles, packageJson),
+      this.detectDeploymentConfig(owner, repo, allFiles, packageJson),
+      this.detectEnvVariables(owner, repo, allFiles),
       this.detectApiEndpoints(owner, repo, summarizedCodeSnippets),
-      Promise.resolve(this.generateProjectLogo(repository)),
     ]);
 
     this.progressCallback("Analyzing contribution guidelines...");
     const contributionGuide = this.generateContributionGuide(
-      structure,
+      allFiles,
       packageManagers,
       scripts
     );
@@ -997,6 +976,7 @@ export class GitHubAnalyzer {
       testConfig,
       deploymentConfig
     );
+
     this.progressCallback("✓ Analysis complete.");
 
     return {
@@ -1005,9 +985,10 @@ export class GitHubAnalyzer {
       frameworks,
       packageManagers: [...new Set(packageManagers)],
       dependencies,
+      categorizedDependencies,
       scripts,
       hasDocumentation: keyFiles.includes("readme.md"),
-      structure,
+      structure: allFiles,
       keyFiles,
       fullFileTree,
       summarizedCodeSnippets,
@@ -1017,7 +998,7 @@ export class GitHubAnalyzer {
       cicdConfig,
       testConfig,
       deploymentConfig,
-      projectLogo,
+      projectLogo: this.generateProjectLogo(repository),
       contributionGuide,
     };
   }

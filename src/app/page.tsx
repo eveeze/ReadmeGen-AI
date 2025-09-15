@@ -25,60 +25,6 @@ import {
 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 
-// Interface DisplayAnalysisData tidak digunakan, jadi bisa dihapus jika tidak ada di tempat lain.
-// Namun, saya biarkan jika mungkin digunakan oleh file lain yang tidak ditampilkan.
-interface DisplayAnalysisData {
-  repository: {
-    name: string;
-    description: string;
-    language: string;
-    topics: string[];
-  };
-  features: {
-    cicd?: {
-      platform: string;
-      hasAutomatedTesting: boolean;
-      hasAutomatedDeployment: boolean;
-      workflows: number;
-    };
-    testing?: {
-      framework: string;
-      hasUnitTests: boolean;
-      hasE2ETests: boolean;
-      hasCoverage: boolean;
-      testCommands: number;
-    };
-    deployment?: {
-      platform: string;
-      requiresEnvVars: boolean;
-      hasBuildProcess: boolean;
-    };
-    api: {
-      endpointCount: number;
-      methods: string[];
-    };
-    environment: {
-      variableCount: number;
-      requiredVars: number;
-    };
-    codeQuality: {
-      analyzedFiles: number;
-      totalComplexity: number;
-      detectedFeatures: string[];
-    };
-    contribution: {
-      hasGuide: boolean;
-      hasCodeOfConduct: boolean;
-      suggestedSteps: number;
-    };
-  };
-  metadata: {
-    generatedAt: string;
-    analysisVersion: string;
-    featuresDetected: string[];
-  };
-}
-
 export default function HomePage() {
   const { status } = useSession();
   const [url, setUrl] = useState("");
@@ -87,18 +33,13 @@ export default function HomePage() {
   const [badges, setBadges] = useState<Badge[]>([]);
   const [logoUrl, setLogoUrl] = useState("");
 
-  const [generationState, setGenerationState] = useState<
-    GenerationState & { progress: string[] }
-  >({
+  const [generationState, setGenerationState] = useState<GenerationState>({
     isLoading: false,
     error: null,
     progress: [],
+    analysis: null,
   });
   const [generatedReadme, setGeneratedReadme] = useState<string>("");
-
-  const [analysisData, setAnalysisData] = useState<ProjectAnalysis | null>(
-    null
-  );
 
   const [isInteractive, setIsInteractive] = useState(false);
   const [questions, setQuestions] = useState<AgenticQuestion[]>([]);
@@ -118,9 +59,9 @@ export default function HomePage() {
       isLoading: true,
       error: null,
       progress: [`$ readmegen --analyze --url ${targetUrl}`],
+      analysis: null,
     });
     setGeneratedReadme("");
-    setAnalysisData(null);
     setQuestions([]);
     setPendingAnalysis(null);
 
@@ -168,19 +109,14 @@ export default function HomePage() {
             }
 
             if (json.done) {
-              setAnalysisData(json.analysis);
-              // projectLogo dan displayAnalysisData tidak digunakan, jadi setter-nya dihapus
-              // setDisplayAnalysisData(json.analysis);
-              // if (json.analysis?.projectLogo?.svgContent) {
-              //   setProjectLogo(json.analysis.projectLogo.svgContent);
-              // }
+              setPendingAnalysis(json.analysis); // Store for potential answers
 
               if (json.questions && json.questions.length > 0) {
-                setPendingAnalysis(json.analysis);
                 setQuestions(json.questions);
                 setGenerationState((prev) => ({
                   ...prev,
                   isLoading: false,
+                  analysis: json.analysis,
                   progress: [
                     ...prev.progress,
                     "✓ Analysis complete. Waiting for user input...",
@@ -191,6 +127,7 @@ export default function HomePage() {
                 setGenerationState((prev) => ({
                   ...prev,
                   isLoading: false,
+                  analysis: json.analysis,
                   progress: [
                     ...prev.progress,
                     "✓ README.md generated successfully!",
@@ -207,6 +144,7 @@ export default function HomePage() {
           ? error.message
           : "An unexpected error occurred.";
       setGenerationState((prev) => ({
+        ...prev,
         isLoading: false,
         error: errorMessage,
         progress: [...prev.progress, `Error: ${errorMessage}`],
@@ -219,7 +157,7 @@ export default function HomePage() {
       ...prev,
       isLoading: true,
       error: null,
-      progress: [...prev.progress, "Processing user answers..."],
+      progress: [...(prev.progress || []), "Processing user answers..."],
     }));
     setQuestions([]);
 
@@ -262,7 +200,7 @@ export default function HomePage() {
             if (json.progress) {
               setGenerationState((prev) => ({
                 ...prev,
-                progress: [...prev.progress, json.progress],
+                progress: [...(prev.progress || []), json.progress],
               }));
             }
 
@@ -271,8 +209,9 @@ export default function HomePage() {
               setGenerationState((prev) => ({
                 ...prev,
                 isLoading: false,
+                analysis: json.analysis,
                 progress: [
-                  ...prev.progress,
+                  ...(prev.progress || []),
                   "✓ Final README.md generated successfully!",
                 ],
               }));
@@ -286,18 +225,23 @@ export default function HomePage() {
           ? error.message
           : "An unexpected error occurred.";
       setGenerationState((prev) => ({
+        ...prev,
         isLoading: false,
         error: errorMessage,
-        progress: [...prev.progress, `Error: ${errorMessage}`],
+        progress: [...(prev.progress || []), `Error: ${errorMessage}`],
       }));
     }
   };
 
   const handleBackToHome = () => {
     setShowTerminalView(false);
-    setGenerationState({ isLoading: false, error: null, progress: [] });
+    setGenerationState({
+      isLoading: false,
+      error: null,
+      progress: [],
+      analysis: null,
+    });
     setGeneratedReadme("");
-    setAnalysisData(null);
     setQuestions([]);
     setPendingAnalysis(null);
   };
@@ -326,7 +270,6 @@ export default function HomePage() {
           isInteractive={isInteractive}
           generationState={generationState}
           generatedReadme={generatedReadme}
-          analysisData={analysisData}
           questions={questions}
           onReAnalyze={handleReAnalyze}
           onUrlChange={setUrl}

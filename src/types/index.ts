@@ -1,3 +1,4 @@
+// src/types/index.ts
 export interface GitHubRepo {
   name: string;
   description: string;
@@ -61,13 +62,29 @@ export interface Badge {
     | "custom";
 }
 
+// --- UPDATED TYPES ---
+export interface CICDJob {
+  name: string;
+  steps: { name?: string; run?: string }[];
+}
+
 export interface CICDConfig {
   platform: "github-actions" | "travis" | "circleci" | "jenkins" | "gitlab";
   configFile: string;
   workflows?: string[];
+  jobs?: CICDJob[]; // Parsed jobs from config
   hasTesting?: boolean;
   hasDeployment?: boolean;
 }
+
+export interface VercelConfig {
+  framework?: string;
+  buildCommand?: string;
+  outputDirectory?: string;
+  nodeVersion?: string;
+}
+
+// --- END OF UPDATED TYPES ---
 
 export interface ProjectLogo {
   svgContent: string;
@@ -90,6 +107,12 @@ export interface DeploymentConfig {
   configFiles: string[];
   requiresEnv?: boolean;
   buildCommand?: string;
+  parsedConfig?: VercelConfig; // Store parsed vercel.json
+}
+
+// --- UPDATED ProjectAnalysis ---
+export interface CategorizedDependencies {
+  [category: string]: string[];
 }
 
 export interface ProjectAnalysis {
@@ -98,6 +121,7 @@ export interface ProjectAnalysis {
   frameworks: string[];
   packageManagers: string[];
   dependencies: Record<string, string>;
+  categorizedDependencies: CategorizedDependencies; // New categorized dependencies
   scripts: Record<string, string>;
   hasDocumentation: boolean;
   structure: FileStructure[];
@@ -117,6 +141,7 @@ export interface ProjectAnalysis {
     codeOfConduct: boolean;
   };
 }
+// --- END OF UPDATED ProjectAnalysis ---
 
 export type ReadmeTemplate = "Dasar" | "Profesional" | "Fun/Creative";
 export type ReadmeLanguage = "English" | "Indonesian" | "Spanish" | "Mandarin";
@@ -125,6 +150,7 @@ export interface GenerationState {
   isLoading: boolean;
   error: string | null;
   progress: string[];
+  analysis?: ProjectAnalysis | null; // Add analysis to state
 }
 
 export interface UserRepo {
