@@ -111,11 +111,15 @@ export class AIReadmeGenerator {
       contributionGuide,
     } = analysis;
 
-    const logoSection = logoUrl
-      ? `<p align="center"><img src="${logoUrl}" alt="Project Logo" width="130"></p>`
-      : analysis.projectLogo?.svgContent
-      ? `<p align="center">${analysis.projectLogo.svgContent}</p>`
-      : "";
+    let logoSection = "";
+
+    if (logoUrl && logoUrl.trim()) {
+      // Jika user memberikan logoUrl, gunakan itu
+      logoSection = `<p align="center"><img src="${logoUrl.trim()}" alt="Project Logo" width="130"></p>`;
+    } else if (analysis.projectLogo?.svgContent) {
+      // Jika tidak ada logoUrl dari user, baru gunakan generated logo
+      logoSection = `<p align="center">${analysis.projectLogo.svgContent}</p>`;
+    }
 
     const allBadges = [...analysis.badges, ...customBadges];
     const badgeMarkdown = allBadges

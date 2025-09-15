@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import axios, { AxiosError } from "axios";
 import { useSession } from "next-auth/react";
 import { UrlInput } from "@/components/UrlInput";
@@ -8,7 +8,7 @@ import { RepoSelector } from "@/components/RepoSelector";
 import { ReadmePreview } from "@/components/ReadmePreview";
 import { BadgeGenerator } from "@/components/BadgeGenerator";
 import EnhancedAnalysisDisplay from "@/components/EnhancedAnalysisDisplay ";
-import { Questionnaire } from "@/components/Questionnaire"; // Komponen baru
+import TerminalAnalysisView from "@/components/TerminalAnalysisView";
 import {
   GenerationState,
   ReadmeTemplate,
@@ -29,11 +29,10 @@ import {
   Terminal,
   Globe,
   Coffee,
+  ArrowLeft,
 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 
-// Definisikan tipe yang sesuai dengan props EnhancedAnalysisDisplay
-// Tipe ini bisa dihapus jika Anda mengimpor ProjectAnalysis dan menggunakannya secara langsung
 interface DisplayAnalysisData {
   repository: {
     name: string;
@@ -101,9 +100,11 @@ export default function HomePage() {
   });
   const [generatedReadme, setGeneratedReadme] = useState<string>("");
 
-  const [analysisData, setAnalysisData] = useState<DisplayAnalysisData | null>(
+  const [analysisData, setAnalysisData] = useState<ProjectAnalysis | null>(
     null
   );
+  const [displayAnalysisData, setDisplayAnalysisData] =
+    useState<DisplayAnalysisData | null>(null);
   const [projectLogo, setProjectLogo] = useState<string>("");
   const [showAnalysis, setShowAnalysis] = useState(true);
 
@@ -113,17 +114,26 @@ export default function HomePage() {
   const [pendingAnalysis, setPendingAnalysis] =
     useState<ProjectAnalysis | null>(null);
 
+  // State baru untuk Terminal View
+  const [showTerminalView, setShowTerminalView] = useState(false);
+
   const handleGenerate = async (targetUrl: string) => {
     if (!targetUrl.trim()) return;
+
+    // Aktivasi terminal view dengan transisi smooth
+    setShowTerminalView(true);
 
     // Reset semua state terkait generasi sebelumnya
     setGenerationState({
       isLoading: true,
       error: null,
-      progress: "$ git clone --analyze " + targetUrl,
+      progress: "Initializing repository analysis...",
     });
+
+    // Clear previous data
     setGeneratedReadme("");
     setAnalysisData(null);
+    setDisplayAnalysisData(null);
     setProjectLogo("");
     setQuestions([]);
     setPendingAnalysis(null);
@@ -134,8 +144,8 @@ export default function HomePage() {
         template,
         language,
         badges,
-        logoUrl, // Pass logoUrl to the API
-        isInteractive, // Kirim flag interaktif
+        logoUrl,
+        isInteractive,
         options: {
           includeArchitecture: true,
           includeLogo: true,
@@ -143,26 +153,29 @@ export default function HomePage() {
       });
 
       if (response.data.success) {
-        // Jika API mengembalikan pertanyaan, masuk ke mode interaktif
+        // Store the actual analysis data for terminal animation
+        setAnalysisData(response.data.analysis);
+
+        // Jika API mengembalikan pertanyaan, simpan untuk ditampilkan di terminal
         if (response.data.questions && response.data.questions.length > 0) {
           setPendingAnalysis(response.data.analysis);
           setQuestions(response.data.questions);
           setGenerationState({
             isLoading: false,
             error: null,
-            progress: "Menunggu jawaban Anda...",
+            progress: "Waiting for your responses...",
           });
         } else {
-          // Jika tidak, langsung tampilkan README
+          // Jika tidak ada pertanyaan, langsung tampilkan README
           setGeneratedReadme(response.data.readme);
-          setAnalysisData(response.data.analysis);
+          setDisplayAnalysisData(response.data.analysis);
           if (response.data.analysis?.projectLogo?.svgContent) {
             setProjectLogo(response.data.analysis.projectLogo.svgContent);
           }
           setGenerationState({
             isLoading: false,
             error: null,
-            progress: "$ echo 'README.md generated successfully!'",
+            progress: "README.md generated successfully!",
           });
         }
       } else {
@@ -186,9 +199,9 @@ export default function HomePage() {
     setGenerationState({
       isLoading: true,
       error: null,
-      progress: "Memproses jawaban dan membuat README final...",
+      progress: "Processing answers and generating final README...",
     });
-    setQuestions([]);
+    setQuestions([]); // Clear questions after submission
 
     try {
       const response = await axios.post("/api/generate", {
@@ -197,7 +210,7 @@ export default function HomePage() {
         template,
         language,
         badges,
-        logoUrl, // Pass logoUrl to the API
+        logoUrl,
         options: {
           includeArchitecture: true,
           includeLogo: true,
@@ -206,11 +219,12 @@ export default function HomePage() {
 
       if (response.data.success) {
         setGeneratedReadme(response.data.readme);
-        setAnalysisData(response.data.analysis);
+        setDisplayAnalysisData(response.data.analysis);
+        setAnalysisData(response.data.analysis); // Update for terminal display
         setGenerationState({
           isLoading: false,
           error: null,
-          progress: "$ echo 'Final README.md generated successfully!'",
+          progress: "Final README.md generated successfully!",
         });
       } else {
         throw new Error(response.data.error || "Final generation failed");
@@ -229,6 +243,71 @@ export default function HomePage() {
     }
   };
 
+  const handleBackToHome = () => {
+    setShowTerminalView(false);
+    setGeneratedReadme("");
+    setAnalysisData(null);
+    setDisplayAnalysisData(null);
+    setProjectLogo("");
+    setQuestions([]);
+    setPendingAnalysis(null);
+    setGenerationState({
+      isLoading: false,
+      error: null,
+      progress: "",
+    });
+  };
+
+  const handleReAnalyze = () => {
+    // Reset states before re-analyzing
+    setGeneratedReadme("");
+    setAnalysisData(null);
+    setDisplayAnalysisData(null);
+    setProjectLogo("");
+    setQuestions([]);
+    setPendingAnalysis(null);
+
+    // Start new analysis
+    handleGenerate(url);
+  };
+
+  // Terminal view - integrated dengan sistem question/answer
+  if (showTerminalView) {
+    return (
+      <div className="relative min-h-screen">
+        {/* Back button - positioned absolutely */}
+        <button
+          onClick={handleBackToHome}
+          className="fixed top-4 left-4 z-50 terminal-button flex items-center space-x-2 px-4 py-2 bg-card/90 backdrop-blur-sm border border-border"
+        >
+          <ArrowLeft className="w-4 h-4" />
+          <span className="font-mono text-sm">back to home</span>
+        </button>
+
+        <TerminalAnalysisView
+          url={url}
+          template={template}
+          language={language}
+          badges={badges}
+          logoUrl={logoUrl}
+          isInteractive={isInteractive}
+          generationState={generationState}
+          generatedReadme={generatedReadme}
+          analysisData={analysisData}
+          questions={questions} // Pass questions to terminal
+          onReAnalyze={handleReAnalyze}
+          onUrlChange={setUrl}
+          onTemplateChange={setTemplate}
+          onLanguageChange={setLanguage}
+          onLogoUrlChange={setLogoUrl}
+          onInteractiveChange={setIsInteractive}
+          onAnswerSubmit={handleAnswerSubmit} // Pass answer handler
+        />
+      </div>
+    );
+  }
+
+  // Tampilan homepage normal
   return (
     <div className="min-h-screen bg-background text-foreground">
       <div className="container mx-auto px-4 py-8 max-w-7xl">
@@ -457,80 +536,6 @@ export default function HomePage() {
           <div className="max-w-4xl mx-auto">
             <BadgeGenerator badges={badges} setBadges={setBadges} />
           </div>
-
-          {/* BARU: Tampilkan Form Pertanyaan jika ada */}
-          {questions.length > 0 && !generationState.isLoading && (
-            <Questionnaire
-              questions={questions}
-              onSubmit={handleAnswerSubmit}
-              isLoading={generationState.isLoading}
-            />
-          )}
-
-          {/* Tampilkan Hasil Analisis */}
-          {(analysisData ||
-            (generationState.isLoading && !questions.length)) && (
-            <div className="animate-slide-up">
-              <div className="flex items-center justify-between mb-6">
-                <div className="flex items-center space-x-3">
-                  <div className="p-2 bg-terminal-cyan/20 border border-terminal-cyan rounded">
-                    <TrendingUp className="w-5 h-5 text-terminal-cyan" />
-                  </div>
-                  <div>
-                    <h2 className="text-2xl font-bold font-mono text-terminal-cyan">
-                      Analysis Report
-                    </h2>
-                    <div className="text-sm text-terminal-comment font-mono">
-                      deep repository scan results
-                    </div>
-                  </div>
-                </div>
-                {analysisData && (
-                  <button
-                    onClick={() => setShowAnalysis(!showAnalysis)}
-                    className="terminal-button px-4 py-2 text-sm hover:bg-terminal-blue hover:text-background"
-                  >
-                    <span className="font-mono">
-                      {showAnalysis ? "hide" : "show"} --details
-                    </span>
-                  </button>
-                )}
-              </div>
-              {showAnalysis && (
-                <EnhancedAnalysisDisplay
-                  analysisData={analysisData}
-                  projectLogo={projectLogo}
-                  isLoading={generationState.isLoading}
-                />
-              )}
-            </div>
-          )}
-
-          {/* Tampilkan README */}
-          {generatedReadme && (
-            <div className="animate-slide-up">
-              <div className="flex items-center justify-between mb-6">
-                <div className="flex items-center space-x-3">
-                  <div className="p-2 bg-terminal-green/20 border border-terminal-green rounded">
-                    <FileText className="w-5 h-5 text-terminal-green" />
-                  </div>
-                  <div>
-                    <h2 className="text-2xl font-bold font-mono text-terminal-green">
-                      README.md
-                    </h2>
-                    <div className="text-sm text-terminal-comment font-mono">
-                      ai-generated documentation
-                    </div>
-                  </div>
-                </div>
-                <div className="flex items-center space-x-2 text-sm text-terminal-comment font-mono">
-                  <Sparkles className="w-4 h-4 text-terminal-yellow" />
-                  <span>powered by IBM Granite</span>
-                </div>
-              </div>
-              <ReadmePreview content={generatedReadme} />
-            </div>
-          )}
         </div>
 
         <footer className="mt-16 text-center">
