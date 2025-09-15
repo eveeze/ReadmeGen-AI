@@ -17,8 +17,6 @@ import {
 import {
   ArrowLeft,
   Brain,
-  Coffee,
-  Globe,
   Palette,
   Rocket,
   Shield,
@@ -27,6 +25,8 @@ import {
 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 
+// Interface DisplayAnalysisData tidak digunakan, jadi bisa dihapus jika tidak ada di tempat lain.
+// Namun, saya biarkan jika mungkin digunakan oleh file lain yang tidak ditampilkan.
 interface DisplayAnalysisData {
   repository: {
     name: string;
@@ -99,9 +99,6 @@ export default function HomePage() {
   const [analysisData, setAnalysisData] = useState<ProjectAnalysis | null>(
     null
   );
-  const [displayAnalysisData, setDisplayAnalysisData] =
-    useState<DisplayAnalysisData | null>(null);
-  const [projectLogo, setProjectLogo] = useState<string>("");
 
   const [isInteractive, setIsInteractive] = useState(false);
   const [questions, setQuestions] = useState<AgenticQuestion[]>([]);
@@ -124,8 +121,6 @@ export default function HomePage() {
     });
     setGeneratedReadme("");
     setAnalysisData(null);
-    setDisplayAnalysisData(null);
-    setProjectLogo("");
     setQuestions([]);
     setPendingAnalysis(null);
 
@@ -174,10 +169,11 @@ export default function HomePage() {
 
             if (json.done) {
               setAnalysisData(json.analysis);
-              setDisplayAnalysisData(json.analysis);
-              if (json.analysis?.projectLogo?.svgContent) {
-                setProjectLogo(json.analysis.projectLogo.svgContent);
-              }
+              // projectLogo dan displayAnalysisData tidak digunakan, jadi setter-nya dihapus
+              // setDisplayAnalysisData(json.analysis);
+              // if (json.analysis?.projectLogo?.svgContent) {
+              //   setProjectLogo(json.analysis.projectLogo.svgContent);
+              // }
 
               if (json.questions && json.questions.length > 0) {
                 setPendingAnalysis(json.analysis);
@@ -460,9 +456,11 @@ export default function HomePage() {
                       disabled={generationState.isLoading}
                       className="terminal-input w-full"
                     >
-                      <option value="Profesional">"professional"</option>
-                      <option value="Dasar">"basic"</option>
-                      <option value="Fun/Creative">"creative"</option>
+                      <option value="Profesional">
+                        &quot;professional&quot;
+                      </option>
+                      <option value="Dasar">&quot;basic&quot;</option>
+                      <option value="Fun/Creative">&quot;creative&quot;</option>
                     </select>
                   </div>
                   <div>
@@ -477,10 +475,10 @@ export default function HomePage() {
                       disabled={generationState.isLoading}
                       className="terminal-input w-full"
                     >
-                      <option value="English">"en"</option>
-                      <option value="Indonesian">"id"</option>
-                      <option value="Spanish">"es"</option>
-                      <option value="Mandarin">"zh"</option>
+                      <option value="English">&quot;en&quot;</option>
+                      <option value="Indonesian">&quot;id&quot;</option>
+                      <option value="Spanish">&quot;es&quot;</option>
+                      <option value="Mandarin">&quot;zh&quot;</option>
                     </select>
                   </div>
                   <div className="md:col-span-2">

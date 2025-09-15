@@ -143,7 +143,7 @@ export async function POST(req: NextRequest) {
   const encoder = new TextEncoder();
   const stream = new ReadableStream({
     async start(controller) {
-      const sendProgress = (progress: string, data?: any) => {
+      const sendProgress = (progress: string, data?) => {
         const payload = { progress, data };
         controller.enqueue(
           encoder.encode(`data: ${JSON.stringify(payload)}\n\n`)
