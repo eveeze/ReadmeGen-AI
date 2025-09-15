@@ -6,6 +6,7 @@ import {
   CodeSnippet,
   ReadmeLanguage,
   Badge,
+  AgenticQuestion,
 } from "@/types";
 
 export class AIReadmeGenerator {
@@ -16,13 +17,80 @@ export class AIReadmeGenerator {
       auth: apiToken,
     });
   }
+  // FUNGSI BARU: Membuat prompt untuk menghasilkan pertanyaan
+  private createQuestionPrompt(analysis: ProjectAnalysis): string {
+    return `
+      Based on the following GitHub repository analysis, generate 3-5 clarifying questions for the user.
+      These questions should aim to gather information that cannot be inferred from the code alone, to create a high-quality README.md.
+      Focus on: project's main purpose, complex setup instructions, contribution nuances, or live demo information.
+      Return the questions as a JSON array of objects, where each object has an "id" (a unique string) and a "question" key.
+
+      **Project Analysis:**
+      - Name: ${analysis.repository.name}
+      - Description: ${analysis.repository.description || "N/A"}
+      - Main Language: ${analysis.mainLanguage}
+      - Frameworks: ${analysis.frameworks.join(", ") || "None"}
+      - Key Dependencies: ${Object.keys(analysis.dependencies)
+        .slice(0, 10)
+        .join(", ")}
+      - Scripts: ${Object.keys(analysis.scripts).join(", ")}
+      - CI/CD Detected: ${analysis.cicdConfig?.platform || "No"}
+      - Deployment Detected: ${analysis.deploymentConfig?.platform || "No"}
+
+      Example questions to generate:
+      [
+        {"id": "q1", "question": "What is the primary goal of this project? What problem does it solve for users?"},
+        {"id": "q2", "question": "Are there any complex environment variables or secrets needed for local setup besides what's in .env.example?"},
+        {"id": "q3", "question": "Is there a live demo or deployed version of this project? If so, what is the URL?"}
+      ]
+
+      Generate ONLY the JSON array. Do not include any other text or markdown formatting.
+    `;
+  }
+
+  // FUNGSI BARU: Memanggil AI untuk mendapatkan pertanyaan
+  async generateClarifyingQuestions(
+    analysis: ProjectAnalysis
+  ): Promise<AgenticQuestion[]> {
+    try {
+      const prompt = this.createQuestionPrompt(analysis);
+      const output = await this.replicate.run(
+        "ibm-granite/granite-3.3-8b-instruct",
+        {
+          input: {
+            prompt: prompt,
+            max_tokens: 500,
+            temperature: 0.6,
+          },
+        }
+      );
+
+      const jsonString = Array.isArray(output)
+        ? output.join("").trim()
+        : String(output).trim();
+
+      // Ekstrak konten JSON dari string
+      const startIndex = jsonString.indexOf("[");
+      const endIndex = jsonString.lastIndexOf("]");
+      if (startIndex !== -1 && endIndex !== -1) {
+        const validJson = jsonString.substring(startIndex, endIndex + 1);
+        return JSON.parse(validJson);
+      }
+      console.warn("AI did not return a valid JSON array for questions.");
+      return [];
+    } catch (error) {
+      console.error("Failed to generate clarifying questions:", error);
+      return []; // Kembalikan array kosong jika gagal
+    }
+  }
 
   // Enhanced prompt with all new features
   private createPrompt(
     analysis: ProjectAnalysis,
     template: ReadmeTemplate,
     language: ReadmeLanguage,
-    customBadges: Badge[]
+    customBadges: Badge[],
+    userAnswers?: Record<string, string>
   ): string {
     const {
       repository,
@@ -66,7 +134,15 @@ export class AIReadmeGenerator {
           "Use a straightforward and clear tone. Provide the essential information in a well-organized manner.";
         break;
     }
-
+    const userAnswersSection =
+      userAnswers && Object.keys(userAnswers).length > 0
+        ? `
+**ADDITIONAL USER-PROVIDED CONTEXT:**
+${Object.entries(userAnswers)
+  .map(([question, answer]) => `- Question: ${question}\n  - Answer: ${answer}`)
+  .join("\n")}
+`
+        : "";
     // NEW: Create sections for new features
     const cicdSection = cicdConfig
       ? `
@@ -136,7 +212,7 @@ Style Guidance: ${styleGuidance}
 **2. DETAILED PROJECT ANALYSIS:**
 - **Frameworks & Key Libraries:** ${frameworks.join(", ") || "None detected"}
 - **Package Managers:** ${packageManagers.join(", ") || "None detected"}
-
+${userAnswersSection}
 ${cicdSection}
 ${testSection}
 ${deploymentSection}
@@ -308,6 +384,14 @@ Return only the SVG code, no explanations.`;
   async analyzeCodeSnippets(
     codeSnippets: CodeSnippet[]
   ): Promise<CodeSnippet[]> {
+    // DIPERBAIKI: Tambahkan pengecekan untuk memastikan codeSnippets adalah array
+    if (!Array.isArray(codeSnippets)) {
+      console.warn(
+        "analyzeCodeSnippets received non-array input, returning empty array."
+      );
+      return [];
+    }
+
     const analyzedSnippets: CodeSnippet[] = [];
 
     for (const snippet of codeSnippets.slice(0, 5)) {
@@ -361,14 +445,14 @@ Keep the summary concise and technical.`;
     analysis: ProjectAnalysis,
     template: ReadmeTemplate,
     language: ReadmeLanguage,
-    customBadges: Badge[]
+    customBadges: Badge[],
+    userAnswers?: Record<string, string>
   ): Promise<string> {
     try {
-      // NEW: Enhance code snippets with AI analysis
       const enhancedAnalysis = {
         ...analysis,
         summarizedCodeSnippets: await this.analyzeCodeSnippets(
-          analysis.summarizedCodeSnippets
+          analysis.summarizedCodeSnippets || []
         ),
       };
 
@@ -376,7 +460,8 @@ Keep the summary concise and technical.`;
         enhancedAnalysis,
         template,
         language,
-        customBadges
+        customBadges,
+        userAnswers
       );
 
       console.log(

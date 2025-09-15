@@ -148,3 +148,9 @@ export interface HistoryEntry {
   readme: string;
   generatedAt: string;
 }
+
+export interface AgenticQuestion {
+  id: string;
+  question: string;
+  placeholder?: string;
+}

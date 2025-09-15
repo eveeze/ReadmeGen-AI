@@ -8,11 +8,14 @@ import { RepoSelector } from "@/components/RepoSelector";
 import { ReadmePreview } from "@/components/ReadmePreview";
 import { BadgeGenerator } from "@/components/BadgeGenerator";
 import EnhancedAnalysisDisplay from "@/components/EnhancedAnalysisDisplay ";
+import { Questionnaire } from "@/components/Questionnaire"; // Komponen baru
 import {
   GenerationState,
   ReadmeTemplate,
   ReadmeLanguage,
   Badge,
+  AgenticQuestion,
+  ProjectAnalysis,
 } from "@/types";
 import {
   FileText,
@@ -32,6 +35,7 @@ import {
 } from "lucide-react";
 
 // Definisikan tipe yang sesuai dengan props EnhancedAnalysisDisplay
+// Tipe ini bisa dihapus jika Anda mengimpor ProjectAnalysis dan menggunakannya secara langsung
 interface DisplayAnalysisData {
   repository: {
     name: string;
@@ -103,9 +107,16 @@ export default function HomePage() {
   const [projectLogo, setProjectLogo] = useState<string>("");
   const [showAnalysis, setShowAnalysis] = useState(true);
 
+  // State baru untuk Agentic AI
+  const [isInteractive, setIsInteractive] = useState(false);
+  const [questions, setQuestions] = useState<AgenticQuestion[]>([]);
+  const [pendingAnalysis, setPendingAnalysis] =
+    useState<ProjectAnalysis | null>(null);
+
   const handleGenerate = async (targetUrl: string) => {
     if (!targetUrl.trim()) return;
 
+    // Reset semua state terkait generasi sebelumnya
     setGenerationState({
       isLoading: true,
       error: null,
@@ -114,67 +125,93 @@ export default function HomePage() {
     setGeneratedReadme("");
     setAnalysisData(null);
     setProjectLogo("");
+    setQuestions([]);
+    setPendingAnalysis(null);
 
     try {
-      const progressSteps = [
-        "$ git clone --analyze " + targetUrl,
-        "$ npm run detect:frameworks",
-        "$ docker compose config --validate",
-        "$ ai analyze --deep-scan src/",
-        "$ curl -X GET /api/endpoints",
-        "$ generate logo --ai-powered",
-        "$ markdown compile --template=" + template,
-      ];
-
-      let stepIndex = 0;
-      const progressInterval = setInterval(() => {
-        if (stepIndex < progressSteps.length - 1) {
-          stepIndex++;
-          setGenerationState((prev) => ({
-            ...prev,
-            progress: progressSteps[stepIndex],
-          }));
-        }
-      }, 2000);
-
       const response = await axios.post("/api/generate", {
         url: targetUrl,
+        template,
+        language,
+        badges,
+        isInteractive, // Kirim flag interaktif
+        options: {
+          includeArchitecture: true,
+          includeLogo: true,
+        },
+      });
+
+      if (response.data.success) {
+        // Jika API mengembalikan pertanyaan, masuk ke mode interaktif
+        if (response.data.questions && response.data.questions.length > 0) {
+          setPendingAnalysis(response.data.analysis);
+          setQuestions(response.data.questions);
+          setGenerationState({
+            isLoading: false,
+            error: null,
+            progress: "Menunggu jawaban Anda...",
+          });
+        } else {
+          // Jika tidak, langsung tampilkan README
+          setGeneratedReadme(response.data.readme);
+          setAnalysisData(response.data.analysis);
+          if (response.data.analysis?.projectLogo?.svgContent) {
+            setProjectLogo(response.data.analysis.projectLogo.svgContent);
+          }
+          setGenerationState({
+            isLoading: false,
+            error: null,
+            progress: "$ echo 'README.md generated successfully!'",
+          });
+        }
+      } else {
+        throw new Error(response.data.error || "Generation pipeline failed");
+      }
+    } catch (error: unknown) {
+      const axiosError = error as AxiosError<{ error: string }>;
+      const errorMessage =
+        axiosError.response?.data?.error ||
+        (error as Error).message ||
+        "Unexpected error in AI pipeline";
+      setGenerationState({
+        isLoading: false,
+        error: errorMessage,
+        progress: "",
+      });
+    }
+  };
+
+  const handleAnswerSubmit = async (answers: Record<string, string>) => {
+    setGenerationState({
+      isLoading: true,
+      error: null,
+      progress: "Memproses jawaban dan membuat README final...",
+    });
+    setQuestions([]);
+
+    try {
+      const response = await axios.post("/api/generate", {
+        analysisData: pendingAnalysis,
+        userAnswers: answers,
         template,
         language,
         badges,
         options: {
           includeArchitecture: true,
           includeLogo: true,
-          deepCodeAnalysis: true,
-          enhancedTesting: true,
         },
       });
-
-      clearInterval(progressInterval);
 
       if (response.data.success) {
         setGeneratedReadme(response.data.readme);
         setAnalysisData(response.data.analysis);
-
-        if (response.data.analysis?.projectLogo?.svgContent) {
-          setProjectLogo(response.data.analysis.projectLogo.svgContent);
-        }
-
-        const serverBadges = response.data.analysis.badges || [];
-        setBadges((currentBadges) => {
-          const customBadges = currentBadges.filter(
-            (b) => !serverBadges.some((sb: Badge) => sb.name === b.name)
-          );
-          return [...serverBadges, ...customBadges];
-        });
-
         setGenerationState({
           isLoading: false,
           error: null,
-          progress: "$ echo 'README.md generated successfully!'",
+          progress: "$ echo 'Final README.md generated successfully!'",
         });
       } else {
-        throw new Error(response.data.error || "Generation pipeline failed");
+        throw new Error(response.data.error || "Final generation failed");
       }
     } catch (error: unknown) {
       const axiosError = error as AxiosError<{ error: string }>;
@@ -224,7 +261,6 @@ export default function HomePage() {
                     </div>
                   </div>
                 </div>
-
                 <div className="text-center font-mono">
                   <div className="text-xs text-terminal-comment mb-2">
                     $ whoami
@@ -238,7 +274,6 @@ export default function HomePage() {
                   <p className="text-lg text-foreground mb-6">
                     AI-powered README generation with deep repository analysis
                   </p>
-
                   <div className="text-xs text-terminal-comment">
                     $ systemctl status readmegen
                   </div>
@@ -252,7 +287,6 @@ export default function HomePage() {
               </div>
             </div>
           </div>
-
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4 max-w-4xl mx-auto mb-8">
             {[
               { icon: Brain, label: "AI Analysis", color: "terminal-blue" },
@@ -319,7 +353,6 @@ export default function HomePage() {
                   <span className="text-terminal-green">$</span> nano
                   readmegen.config.json
                 </div>
-
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   <div>
                     <label className="block text-sm font-medium font-mono text-terminal-yellow mb-2">
@@ -344,7 +377,6 @@ export default function HomePage() {
                       </option>
                     </select>
                   </div>
-
                   <div>
                     <label className="block text-sm font-medium font-mono text-terminal-yellow mb-2">
                       language:
@@ -369,45 +401,25 @@ export default function HomePage() {
                   </div>
                 </div>
 
-                <div className="mt-6 p-4 bg-secondary/30 rounded-lg border border-border">
-                  <div className="text-sm font-medium font-mono text-terminal-magenta mb-3 flex items-center">
-                    <Code className="w-4 h-4 mr-2" />
-                    AI_FEATURES: enabled
-                  </div>
-                  <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-xs font-mono">
-                    {[
-                      {
-                        icon: Brain,
-                        label: "deep_analysis",
-                        color: "terminal-blue",
-                      },
-                      {
-                        icon: Palette,
-                        label: "auto_logo",
-                        color: "terminal-magenta",
-                      },
-                      {
-                        icon: Activity,
-                        label: "ci_cd_scan",
-                        color: "terminal-green",
-                      },
-                      {
-                        icon: Database,
-                        label: "env_detect",
-                        color: "terminal-yellow",
-                      },
-                    ].map((feature, index) => (
-                      <div
-                        key={index}
-                        className="flex items-center space-x-2 text-foreground"
-                      >
-                        <feature.icon
-                          className={`w-4 h-4 text-${feature.color}`}
-                        />
-                        <span>{feature.label}</span>
-                      </div>
-                    ))}
-                  </div>
+                {/* Checkbox Agentic AI */}
+                <div className="mt-6">
+                  <label
+                    htmlFor="interactive-mode"
+                    className="flex items-center space-x-3 cursor-pointer"
+                  >
+                    <input
+                      type="checkbox"
+                      id="interactive-mode"
+                      checked={isInteractive}
+                      onChange={(e) => setIsInteractive(e.target.checked)}
+                      disabled={generationState.isLoading}
+                      className="h-4 w-4 rounded border-border bg-input text-terminal-green focus:ring-terminal-green focus:ring-offset-background"
+                    />
+                    <span className="font-mono text-sm text-terminal-comment">
+                      Aktifkan mode interaktif (Agentic AI) untuk pertanyaan
+                      lanjutan
+                    </span>
+                  </label>
                 </div>
 
                 <div className="mt-4 text-xs font-mono text-terminal-comment">
@@ -431,7 +443,18 @@ export default function HomePage() {
             <BadgeGenerator badges={badges} setBadges={setBadges} />
           </div>
 
-          {(analysisData || generationState.isLoading) && (
+          {/* BARU: Tampilkan Form Pertanyaan jika ada */}
+          {questions.length > 0 && !generationState.isLoading && (
+            <Questionnaire
+              questions={questions}
+              onSubmit={handleAnswerSubmit}
+              isLoading={generationState.isLoading}
+            />
+          )}
+
+          {/* Tampilkan Hasil Analisis */}
+          {(analysisData ||
+            (generationState.isLoading && !questions.length)) && (
             <div className="animate-slide-up">
               <div className="flex items-center justify-between mb-6">
                 <div className="flex items-center space-x-3">
@@ -458,7 +481,6 @@ export default function HomePage() {
                   </button>
                 )}
               </div>
-
               {showAnalysis && (
                 <EnhancedAnalysisDisplay
                   analysisData={analysisData}
@@ -469,6 +491,7 @@ export default function HomePage() {
             </div>
           )}
 
+          {/* Tampilkan README */}
           {generatedReadme && (
             <div className="animate-slide-up">
               <div className="flex items-center justify-between mb-6">
@@ -493,70 +516,6 @@ export default function HomePage() {
               <ReadmePreview content={generatedReadme} />
             </div>
           )}
-
-          {analysisData && !generationState.isLoading && (
-            <div className="max-w-4xl mx-auto">
-              <div className="terminal-window bg-card border border-terminal-green">
-                <div className="terminal-header">
-                  <div className="flex items-center space-x-3">
-                    <div className="p-1.5 bg-terminal-green/20 border border-terminal-green rounded">
-                      <Activity className="w-4 h-4 text-terminal-green" />
-                    </div>
-                    <div className="text-sm font-mono text-terminal-green">
-                      system.stats --summary
-                    </div>
-                  </div>
-                </div>
-                <div className="terminal-content p-6">
-                  <div className="grid grid-cols-2 md:grid-cols-4 gap-6 text-center">
-                    {[
-                      {
-                        label: "files_scanned",
-                        value:
-                          analysisData.features.codeQuality.analyzedFiles || 0,
-                        color: "terminal-green",
-                        icon: FileText,
-                      },
-                      {
-                        label: "api_endpoints",
-                        value: analysisData.features.api.endpointCount || 0,
-                        color: "terminal-blue",
-                        icon: Globe,
-                      },
-                      {
-                        label: "features_detected",
-                        value:
-                          analysisData.metadata.featuresDetected.length || 0,
-                        color: "terminal-magenta",
-                        icon: Zap,
-                      },
-                      {
-                        label: "env_variables",
-                        value:
-                          analysisData.features.environment.variableCount || 0,
-                        color: "terminal-yellow",
-                        icon: Database,
-                      },
-                    ].map((stat, index) => (
-                      <div key={index} className="space-y-2">
-                        <stat.icon
-                          className={`w-8 h-8 text-${stat.color} mx-auto`}
-                        />
-                        <div
-                          className={`text-3xl font-bold font-mono text-${stat.color}`}
-                        >
-                          {stat.value}
-                        </div>
-                        <div className="text-sm text-terminal-comment font-mono">
-                          {stat.label}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              </div>
-            </div>
-          )}
         </div>
 
         <footer className="mt-16 text-center">
@@ -575,7 +534,7 @@ export default function HomePage() {
                 <div className="w-px h-4 bg-border"></div>
                 <div className="flex items-center space-x-2">
                   <Coffee className="w-4 h-4 text-terminal-yellow" />
-                  <span className="text-terminal-comment">v2.0.0</span>
+                  <span className="text-terminal-comment">v2.1.0</span>
                 </div>
               </div>
               <div className="text-xs text-terminal-comment font-mono">
