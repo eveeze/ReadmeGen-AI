@@ -23,7 +23,6 @@ export interface CodeSnippet {
   fileName: string;
   content: string;
   summary: string;
-  // New: AI-generated analysis
   detectedFeatures?: string[];
   complexity?: "low" | "medium" | "high";
   mainFunction?: string;
@@ -33,7 +32,6 @@ export interface ApiEndpoint {
   path: string;
   method: string;
   description: string;
-  // Enhanced with parameters and responses
   parameters?: Array<{
     name: string;
     type: string;
@@ -63,7 +61,6 @@ export interface Badge {
     | "custom";
 }
 
-// New: CI/CD Detection
 export interface CICDConfig {
   platform: "github-actions" | "travis" | "circleci" | "jenkins" | "gitlab";
   configFile: string;
@@ -72,7 +69,6 @@ export interface CICDConfig {
   hasDeployment?: boolean;
 }
 
-// New: Project Logo Generation
 export interface ProjectLogo {
   svgContent: string;
   primaryColor: string;
@@ -80,7 +76,6 @@ export interface ProjectLogo {
   style: "minimal" | "modern" | "playful" | "professional";
 }
 
-// New: Enhanced Test Detection
 export interface TestConfig {
   framework: string;
   testFiles: string[];
@@ -90,7 +85,6 @@ export interface TestConfig {
   unitTests?: boolean;
 }
 
-// New: Deployment Detection
 export interface DeploymentConfig {
   platform: "vercel" | "netlify" | "heroku" | "aws" | "docker" | "github-pages";
   configFiles: string[];
@@ -113,8 +107,6 @@ export interface ProjectAnalysis {
   apiEndpoints: ApiEndpoint[];
   envVariables: EnvironmentVariable[];
   badges: Badge[];
-
-  // New features
   cicdConfig?: CICDConfig;
   testConfig?: TestConfig;
   deploymentConfig?: DeploymentConfig;
@@ -132,7 +124,7 @@ export type ReadmeLanguage = "English" | "Indonesian" | "Spanish" | "Mandarin";
 export interface GenerationState {
   isLoading: boolean;
   error: string | null;
-  progress: string;
+  progress: string[];
 }
 
 export interface UserRepo {

@@ -1,13 +1,10 @@
 "use client";
 
-import { useState, useEffect } from "react";
-import axios, { AxiosError } from "axios";
+import { useState } from "react";
 import { useSession } from "next-auth/react";
 import { UrlInput } from "@/components/UrlInput";
 import { RepoSelector } from "@/components/RepoSelector";
-import { ReadmePreview } from "@/components/ReadmePreview";
 import { BadgeGenerator } from "@/components/BadgeGenerator";
-import EnhancedAnalysisDisplay from "@/components/EnhancedAnalysisDisplay ";
 import TerminalAnalysisView from "@/components/TerminalAnalysisView";
 import {
   GenerationState,
@@ -18,18 +15,15 @@ import {
   ProjectAnalysis,
 } from "@/types";
 import {
-  FileText,
-  Sparkles,
-  TrendingUp,
-  Zap,
-  Brain,
-  Palette,
-  Shield,
-  Rocket,
-  Terminal,
-  Globe,
-  Coffee,
   ArrowLeft,
+  Brain,
+  Coffee,
+  Globe,
+  Palette,
+  Rocket,
+  Shield,
+  Sparkles,
+  Terminal,
 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 
@@ -93,10 +87,12 @@ export default function HomePage() {
   const [badges, setBadges] = useState<Badge[]>([]);
   const [logoUrl, setLogoUrl] = useState("");
 
-  const [generationState, setGenerationState] = useState<GenerationState>({
+  const [generationState, setGenerationState] = useState<
+    GenerationState & { progress: string[] }
+  >({
     isLoading: false,
     error: null,
-    progress: "",
+    progress: [],
   });
   const [generatedReadme, setGeneratedReadme] = useState<string>("");
 
@@ -106,31 +102,26 @@ export default function HomePage() {
   const [displayAnalysisData, setDisplayAnalysisData] =
     useState<DisplayAnalysisData | null>(null);
   const [projectLogo, setProjectLogo] = useState<string>("");
-  const [showAnalysis, setShowAnalysis] = useState(true);
 
-  // State baru untuk Agentic AI
   const [isInteractive, setIsInteractive] = useState(false);
   const [questions, setQuestions] = useState<AgenticQuestion[]>([]);
   const [pendingAnalysis, setPendingAnalysis] =
     useState<ProjectAnalysis | null>(null);
 
-  // State baru untuk Terminal View
   const [showTerminalView, setShowTerminalView] = useState(false);
 
-  const handleGenerate = async (targetUrl: string) => {
+  const handleGenerate = async (targetUrl: string, isReanalyzing = false) => {
     if (!targetUrl.trim()) return;
 
-    // Aktivasi terminal view dengan transisi smooth
-    setShowTerminalView(true);
+    if (!isReanalyzing) {
+      setShowTerminalView(true);
+    }
 
-    // Reset semua state terkait generasi sebelumnya
     setGenerationState({
       isLoading: true,
       error: null,
-      progress: "Initializing repository analysis...",
+      progress: [`$ readmegen --analyze --url ${targetUrl}`],
     });
-
-    // Clear previous data
     setGeneratedReadme("");
     setAnalysisData(null);
     setDisplayAnalysisData(null);
@@ -139,143 +130,189 @@ export default function HomePage() {
     setPendingAnalysis(null);
 
     try {
-      const response = await axios.post("/api/generate", {
-        url: targetUrl,
-        template,
-        language,
-        badges,
-        logoUrl,
-        isInteractive,
-        options: {
-          includeArchitecture: true,
-          includeLogo: true,
-        },
+      const response = await fetch("/api/generate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          url: targetUrl,
+          template,
+          language,
+          badges,
+          logoUrl,
+          isInteractive,
+        }),
       });
 
-      if (response.data.success) {
-        // Store the actual analysis data for terminal animation
-        setAnalysisData(response.data.analysis);
-
-        // Jika API mengembalikan pertanyaan, simpan untuk ditampilkan di terminal
-        if (response.data.questions && response.data.questions.length > 0) {
-          setPendingAnalysis(response.data.analysis);
-          setQuestions(response.data.questions);
-          setGenerationState({
-            isLoading: false,
-            error: null,
-            progress: "Waiting for your responses...",
-          });
-        } else {
-          // Jika tidak ada pertanyaan, langsung tampilkan README
-          setGeneratedReadme(response.data.readme);
-          setDisplayAnalysisData(response.data.analysis);
-          if (response.data.analysis?.projectLogo?.svgContent) {
-            setProjectLogo(response.data.analysis.projectLogo.svgContent);
-          }
-          setGenerationState({
-            isLoading: false,
-            error: null,
-            progress: "README.md generated successfully!",
-          });
-        }
-      } else {
-        throw new Error(response.data.error || "Generation pipeline failed");
+      if (!response.ok || !response.body) {
+        throw new Error(`API request failed with status ${response.status}`);
       }
-    } catch (error: unknown) {
-      const axiosError = error as AxiosError<{ error: string }>;
+
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split("\n\n");
+        buffer = lines.pop() || "";
+
+        for (const line of lines) {
+          if (line.startsWith("data: ")) {
+            const json = JSON.parse(line.substring(6));
+
+            if (json.error) throw new Error(json.error);
+
+            if (json.progress) {
+              setGenerationState((prev) => ({
+                ...prev,
+                progress: [...prev.progress, json.progress],
+              }));
+            }
+
+            if (json.done) {
+              setAnalysisData(json.analysis);
+              setDisplayAnalysisData(json.analysis);
+              if (json.analysis?.projectLogo?.svgContent) {
+                setProjectLogo(json.analysis.projectLogo.svgContent);
+              }
+
+              if (json.questions && json.questions.length > 0) {
+                setPendingAnalysis(json.analysis);
+                setQuestions(json.questions);
+                setGenerationState((prev) => ({
+                  ...prev,
+                  isLoading: false,
+                  progress: [
+                    ...prev.progress,
+                    "✓ Analysis complete. Waiting for user input...",
+                  ],
+                }));
+              } else {
+                setGeneratedReadme(json.readme);
+                setGenerationState((prev) => ({
+                  ...prev,
+                  isLoading: false,
+                  progress: [
+                    ...prev.progress,
+                    "✓ README.md generated successfully!",
+                  ],
+                }));
+              }
+            }
+          }
+        }
+      }
+    } catch (error) {
       const errorMessage =
-        axiosError.response?.data?.error ||
-        (error as Error).message ||
-        "Unexpected error in AI pipeline";
-      setGenerationState({
+        error instanceof Error
+          ? error.message
+          : "An unexpected error occurred.";
+      setGenerationState((prev) => ({
         isLoading: false,
         error: errorMessage,
-        progress: "",
-      });
+        progress: [...prev.progress, `Error: ${errorMessage}`],
+      }));
     }
   };
 
   const handleAnswerSubmit = async (answers: Record<string, string>) => {
-    setGenerationState({
+    setGenerationState((prev) => ({
+      ...prev,
       isLoading: true,
       error: null,
-      progress: "Processing answers and generating final README...",
-    });
-    setQuestions([]); // Clear questions after submission
+      progress: [...prev.progress, "Processing user answers..."],
+    }));
+    setQuestions([]);
 
     try {
-      const response = await axios.post("/api/generate", {
-        analysisData: pendingAnalysis,
-        userAnswers: answers,
-        template,
-        language,
-        badges,
-        logoUrl,
-        options: {
-          includeArchitecture: true,
-          includeLogo: true,
-        },
+      const response = await fetch("/api/generate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          analysisData: pendingAnalysis,
+          userAnswers: answers,
+          template,
+          language,
+          badges,
+          logoUrl,
+        }),
       });
 
-      if (response.data.success) {
-        setGeneratedReadme(response.data.readme);
-        setDisplayAnalysisData(response.data.analysis);
-        setAnalysisData(response.data.analysis); // Update for terminal display
-        setGenerationState({
-          isLoading: false,
-          error: null,
-          progress: "Final README.md generated successfully!",
-        });
-      } else {
-        throw new Error(response.data.error || "Final generation failed");
+      if (!response.ok || !response.body) {
+        throw new Error(`API request failed with status ${response.status}`);
       }
-    } catch (error: unknown) {
-      const axiosError = error as AxiosError<{ error: string }>;
+
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split("\n\n");
+        buffer = lines.pop() || "";
+
+        for (const line of lines) {
+          if (line.startsWith("data: ")) {
+            const json = JSON.parse(line.substring(6));
+
+            if (json.error) throw new Error(json.error);
+
+            if (json.progress) {
+              setGenerationState((prev) => ({
+                ...prev,
+                progress: [...prev.progress, json.progress],
+              }));
+            }
+
+            if (json.done) {
+              setGeneratedReadme(json.readme);
+              setGenerationState((prev) => ({
+                ...prev,
+                isLoading: false,
+                progress: [
+                  ...prev.progress,
+                  "✓ Final README.md generated successfully!",
+                ],
+              }));
+            }
+          }
+        }
+      }
+    } catch (error) {
       const errorMessage =
-        axiosError.response?.data?.error ||
-        (error as Error).message ||
-        "Unexpected error in AI pipeline";
-      setGenerationState({
+        error instanceof Error
+          ? error.message
+          : "An unexpected error occurred.";
+      setGenerationState((prev) => ({
         isLoading: false,
         error: errorMessage,
-        progress: "",
-      });
+        progress: [...prev.progress, `Error: ${errorMessage}`],
+      }));
     }
   };
 
   const handleBackToHome = () => {
     setShowTerminalView(false);
+    setGenerationState({ isLoading: false, error: null, progress: [] });
     setGeneratedReadme("");
     setAnalysisData(null);
-    setDisplayAnalysisData(null);
-    setProjectLogo("");
     setQuestions([]);
     setPendingAnalysis(null);
-    setGenerationState({
-      isLoading: false,
-      error: null,
-      progress: "",
-    });
   };
 
   const handleReAnalyze = () => {
-    // Reset states before re-analyzing
-    setGeneratedReadme("");
-    setAnalysisData(null);
-    setDisplayAnalysisData(null);
-    setProjectLogo("");
-    setQuestions([]);
-    setPendingAnalysis(null);
-
-    // Start new analysis
-    handleGenerate(url);
+    handleGenerate(url, true);
   };
 
-  // Terminal view - integrated dengan sistem question/answer
   if (showTerminalView) {
     return (
       <div className="relative min-h-screen">
-        {/* Back button - positioned absolutely */}
         <button
           onClick={handleBackToHome}
           className="fixed top-4 left-4 z-50 terminal-button flex items-center space-x-2 px-4 py-2 bg-card/90 backdrop-blur-sm border border-border"
@@ -294,20 +331,19 @@ export default function HomePage() {
           generationState={generationState}
           generatedReadme={generatedReadme}
           analysisData={analysisData}
-          questions={questions} // Pass questions to terminal
+          questions={questions}
           onReAnalyze={handleReAnalyze}
           onUrlChange={setUrl}
           onTemplateChange={setTemplate}
           onLanguageChange={setLanguage}
           onLogoUrlChange={setLogoUrl}
           onInteractiveChange={setIsInteractive}
-          onAnswerSubmit={handleAnswerSubmit} // Pass answer handler
+          onAnswerSubmit={handleAnswerSubmit}
         />
       </div>
     );
   }
 
-  // Tampilan homepage normal
   return (
     <div className="min-h-screen bg-background text-foreground">
       <div className="container mx-auto px-4 py-8 max-w-7xl">
@@ -327,7 +363,7 @@ export default function HomePage() {
                     </div>
                   </div>
                   <div className="text-xs text-terminal-comment font-mono">
-                    v2.0.0-stable
+                    v2.1.0-streaming
                   </div>
                 </div>
               </div>
@@ -399,41 +435,18 @@ export default function HomePage() {
             onGenerate={() => handleGenerate(url)}
             isLoading={generationState.isLoading}
             error={generationState.error}
-            progress={generationState.progress}
+            progress={
+              generationState.progress[generationState.progress.length - 1] ||
+              ""
+            }
           />
 
           <div className="max-w-4xl mx-auto">
             <div className="terminal-window bg-card">
               <div className="terminal-header">
-                <div className="flex items-center justify-between w-full">
-                  <div className="flex items-center space-x-4">
-                    <div className="terminal-controls">
-                      <div className="terminal-dot close"></div>
-                      <div className="terminal-dot minimize"></div>
-                      <div className="terminal-dot maximize"></div>
-                    </div>
-                    <div className="flex items-center space-x-3">
-                      <div className="p-1.5 bg-terminal-cyan/20 border border-terminal-cyan rounded">
-                        <Zap className="w-4 h-4 text-terminal-cyan" />
-                      </div>
-                      <div>
-                        <div className="text-sm font-bold text-terminal-cyan font-mono">
-                          config.json
-                        </div>
-                        <div className="text-xs text-terminal-comment font-mono">
-                          generation options
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                </div>
+                <div className="terminal-title font-mono">config.json</div>
               </div>
-
               <div className="terminal-content p-6">
-                <div className="text-sm font-mono text-terminal-comment mb-4">
-                  <span className="text-terminal-green">$</span> nano
-                  readmegen.config.json
-                </div>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   <div>
                     <label className="block text-sm font-medium font-mono text-terminal-yellow mb-2">
@@ -445,17 +458,11 @@ export default function HomePage() {
                         setTemplate(e.target.value as ReadmeTemplate)
                       }
                       disabled={generationState.isLoading}
-                      className="terminal-input w-full bg-input border border-border text-foreground font-mono"
+                      className="terminal-input w-full"
                     >
-                      <option value="Profesional">
-                        &quot;professional&quot; // comprehensive
-                      </option>
-                      <option value="Dasar">
-                        &quot;basic&quot; // minimal essential
-                      </option>
-                      <option value="Fun/Creative">
-                        &quot;creative&quot; // engaging style
-                      </option>
+                      <option value="Profesional">"professional"</option>
+                      <option value="Dasar">"basic"</option>
+                      <option value="Fun/Creative">"creative"</option>
                     </select>
                   </div>
                   <div>
@@ -468,16 +475,12 @@ export default function HomePage() {
                         setLanguage(e.target.value as ReadmeLanguage)
                       }
                       disabled={generationState.isLoading}
-                      className="terminal-input w-full bg-input border border-border text-foreground font-mono"
+                      className="terminal-input w-full"
                     >
-                      <option value="English">&quot;en&quot; // english</option>
-                      <option value="Indonesian">
-                        &quot;id&quot; // indonesian
-                      </option>
-                      <option value="Spanish">&quot;es&quot; // spanish</option>
-                      <option value="Mandarin">
-                        &quot;zh&quot; // mandarin
-                      </option>
+                      <option value="English">"en"</option>
+                      <option value="Indonesian">"id"</option>
+                      <option value="Spanish">"es"</option>
+                      <option value="Mandarin">"zh"</option>
                     </select>
                   </div>
                   <div className="md:col-span-2">
@@ -494,8 +497,6 @@ export default function HomePage() {
                     />
                   </div>
                 </div>
-
-                {/* Checkbox Agentic AI */}
                 <div className="mt-6">
                   <label
                     htmlFor="interactive-mode"
@@ -507,18 +508,12 @@ export default function HomePage() {
                       checked={isInteractive}
                       onChange={(e) => setIsInteractive(e.target.checked)}
                       disabled={generationState.isLoading}
-                      className="h-4 w-4 rounded border-border bg-input text-terminal-green focus:ring-terminal-green focus:ring-offset-background"
+                      className="h-4 w-4 rounded border-border bg-input text-terminal-green focus:ring-terminal-green"
                     />
                     <span className="font-mono text-sm text-terminal-comment">
-                      Aktifkan mode interaktif (Agentic AI) untuk pertanyaan
-                      lanjutan
+                      Enable Interactive Mode (Agentic AI)
                     </span>
                   </label>
-                </div>
-
-                <div className="mt-4 text-xs font-mono text-terminal-comment">
-                  <span className="text-terminal-green">$</span> :wq # save and
-                  exit
                 </div>
               </div>
             </div>
@@ -539,29 +534,8 @@ export default function HomePage() {
         </div>
 
         <footer className="mt-16 text-center">
-          <div className="terminal-window bg-card max-w-2xl mx-auto">
-            <div className="terminal-content p-6">
-              <div className="flex items-center justify-center space-x-4 mb-4 text-sm font-mono">
-                <div className="flex items-center space-x-2">
-                  <Brain className="w-4 h-4 text-terminal-blue" />
-                  <span className="text-terminal-comment">IBM Granite AI</span>
-                </div>
-                <div className="w-px h-4 bg-border"></div>
-                <div className="flex items-center space-x-2">
-                  <Globe className="w-4 h-4 text-terminal-green" />
-                  <span className="text-terminal-comment">GitHub API</span>
-                </div>
-                <div className="w-px h-4 bg-border"></div>
-                <div className="flex items-center space-x-2">
-                  <Coffee className="w-4 h-4 text-terminal-yellow" />
-                  <span className="text-terminal-comment">v2.1.0</span>
-                </div>
-              </div>
-              <div className="text-xs text-terminal-comment font-mono">
-                $ echo &quot;Transform repositories with intelligent
-                analysis&quot;
-              </div>
-            </div>
+          <div className="text-xs text-terminal-comment font-mono">
+            Powered by IBM Granite AI, GitHub API, and Vercel.
           </div>
         </footer>
       </div>

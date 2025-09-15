@@ -1,4 +1,5 @@
-import { NextRequest, NextResponse } from "next/server";
+// src/app/api/generate/route.ts
+import { NextRequest } from "next/server";
 import { GitHubAnalyzer } from "@/lib/github";
 import { AIReadmeGenerator } from "@/lib/ai";
 import { extractGitHubInfo } from "@/lib/utils";
@@ -13,13 +14,7 @@ import {
   ProjectAnalysis,
 } from "@/types";
 
-interface HistoryMetadata {
-  template: ReadmeTemplate;
-  language: ReadmeLanguage;
-  customBadges: number;
-  analysisFeatures: string[];
-}
-
+// Interface dan tipe data yang diperlukan
 interface GenerateRequestBody {
   url?: string;
   template: ReadmeTemplate;
@@ -28,19 +23,14 @@ interface GenerateRequestBody {
   options?: {
     includeArchitecture?: boolean;
     includeLogo?: boolean;
-    deepCodeAnalysis?: boolean;
-    enhancedTesting?: boolean;
   };
   isInteractive?: boolean;
   analysisData?: ProjectAnalysis;
   userAnswers?: Record<string, string>;
-  logoUrl?: string; // Ditambahkan untuk menerima logoUrl
+  logoUrl?: string;
 }
 
-/**
- * Helper function untuk mengubah data analisis mentah menjadi format yang diharapkan frontend.
- * DIPERBAIKI: Sekarang menyertakan summarizedCodeSnippets.
- */
+// Fungsi helper untuk memformat data analisis
 function formatAnalysisForResponse(analysis: ProjectAnalysis) {
   const featuresDetected = [
     analysis.cicdConfig && "CI/CD Pipeline",
@@ -52,9 +42,7 @@ function formatAnalysisForResponse(analysis: ProjectAnalysis) {
   ].filter(Boolean) as string[];
 
   return {
-    // Memasukkan semua properti dari analisis asli
     ...analysis,
-    // Menimpa beberapa properti dengan format yang lebih spesifik jika perlu
     features: {
       cicd: analysis.cicdConfig
         ? {
@@ -126,183 +114,181 @@ function formatAnalysisForResponse(analysis: ProjectAnalysis) {
 
 export async function POST(req: NextRequest) {
   const session = await getServerSession(authOptions);
+  const body: GenerateRequestBody = await req.json();
 
-  try {
-    const body: GenerateRequestBody = await req.json();
-    const {
-      url,
-      template,
-      language,
-      badges,
-      options = {},
-      isInteractive,
-      analysisData,
-      userAnswers,
-      logoUrl,
-    } = body;
+  const {
+    url,
+    template,
+    language,
+    badges,
+    isInteractive,
+    analysisData,
+    userAnswers,
+    logoUrl,
+  } = body;
 
-    const replicateToken = process.env.REPLICATE_API_TOKEN;
-    const githubToken = process.env.GITHUB_TOKEN;
+  const replicateToken = process.env.REPLICATE_API_TOKEN;
+  const githubToken = process.env.GITHUB_TOKEN;
 
-    if (!replicateToken) {
-      return NextResponse.json(
-        { error: "AI service not configured." },
-        { status: 500 }
-      );
-    }
-
-    const githubAnalyzer = new GitHubAnalyzer(githubToken);
-    const aiGenerator = new AIReadmeGenerator(replicateToken);
-
-    if (userAnswers && analysisData) {
-      console.log("Generating final README with user answers...");
-      const readmeContent = await aiGenerator.generateReadme(
-        analysisData,
-        template,
-        language,
-        badges,
-        userAnswers,
-        logoUrl
-      );
-      const formattedAnalysis = formatAnalysisForResponse(analysisData);
-
-      if (session?.user?.email) {
-        const repoInfo = extractGitHubInfo(analysisData.repository.html_url);
-        if (repoInfo) {
-          const historyKey = `history:${session.user.email}`;
-          const historyEntry: HistoryEntry = {
-            id: `${new Date().toISOString()}-${repoInfo.repo}`,
-            repoName: `${repoInfo.owner}/${repoInfo.repo}`,
-            repoUrl: analysisData.repository.html_url,
-            readme: readmeContent,
-            generatedAt: new Date().toISOString(),
-          };
-          await kv.lpush(historyKey, historyEntry);
-          await kv.ltrim(historyKey, 0, 9);
-        }
+  if (!replicateToken) {
+    return new Response(
+      JSON.stringify({ error: "AI service not configured." }),
+      {
+        status: 500,
+        headers: { "Content-Type": "application/json" },
       }
-
-      return NextResponse.json({
-        success: true,
-        readme: readmeContent,
-        analysis: formattedAnalysis,
-      });
-    }
-
-    if (!url) {
-      return NextResponse.json(
-        { error: "GitHub URL is required" },
-        { status: 400 }
-      );
-    }
-
-    const repoInfo = extractGitHubInfo(url);
-    if (!repoInfo) {
-      return NextResponse.json(
-        { error: "Invalid GitHub URL format." },
-        { status: 400 }
-      );
-    }
-
-    console.log(`Starting analysis for ${repoInfo.owner}/${repoInfo.repo}`);
-    const analysis = await githubAnalyzer.analyzeProject(
-      repoInfo.owner,
-      repoInfo.repo
-    );
-    console.log(`Analysis completed for ${repoInfo.owner}/${repoInfo.repo}`);
-
-    const formattedAnalysis = formatAnalysisForResponse(analysis);
-
-    if (isInteractive) {
-      console.log("Interactive mode: generating questions...");
-      const questions = await aiGenerator.generateClarifyingQuestions(analysis);
-      return NextResponse.json({
-        success: true,
-        analysis: formattedAnalysis,
-        questions,
-      });
-    }
-
-    console.log("Standard mode: generating README directly...");
-    const [readmeContent, architectureDiagram, projectLogo] = await Promise.all(
-      [
-        aiGenerator.generateReadme(
-          analysis,
-          template,
-          language,
-          badges,
-          undefined,
-          logoUrl
-        ),
-        options.includeArchitecture
-          ? aiGenerator.generateArchitectureDiagram(analysis)
-          : Promise.resolve(""),
-        options.includeLogo
-          ? aiGenerator.generateProjectLogo(analysis)
-          : Promise.resolve(""),
-      ]
-    );
-
-    let finalReadme = readmeContent;
-    if (architectureDiagram?.trim())
-      finalReadme += `\n\n## 🏛️ Architecture\n\n${architectureDiagram}`;
-    if (projectLogo?.trim()) {
-      const lines = finalReadme.split("\n");
-      const titleIndex = lines.findIndex((line) => line.startsWith("# "));
-      if (titleIndex !== -1) {
-        lines.splice(
-          titleIndex + 1,
-          0,
-          `\n<div align="center">${projectLogo}</div>\n`
-        );
-        finalReadme = lines.join("\n");
-      }
-    }
-
-    if (session?.user?.email) {
-      const historyKey = `history:${session.user.email}`;
-      const historyEntry: HistoryEntry = {
-        id: `${new Date().toISOString()}-${repoInfo.repo}`,
-        repoName: `${repoInfo.owner}/${repoInfo.repo}`,
-        repoUrl: url,
-        readme: finalReadme,
-        generatedAt: new Date().toISOString(),
-      };
-      await kv.lpush(historyKey, historyEntry);
-      await kv.ltrim(historyKey, 0, 9);
-    }
-
-    return NextResponse.json({
-      success: true,
-      readme: finalReadme,
-      analysis: formattedAnalysis,
-    });
-  } catch (error) {
-    console.error("Enhanced generation error:", error);
-    let errorMessage = "Failed to generate README";
-    let statusCode = 500;
-
-    if (error instanceof Error) {
-      errorMessage = error.message;
-      if (error.message.includes("not found")) statusCode = 404;
-      else if (error.message.includes("rate limit")) statusCode = 429;
-      else if (error.message.includes("timeout")) statusCode = 408;
-    }
-
-    return NextResponse.json(
-      { error: errorMessage, code: statusCode },
-      { status: statusCode }
     );
   }
+
+  const encoder = new TextEncoder();
+  const stream = new ReadableStream({
+    async start(controller) {
+      const sendProgress = (progress: string, data?: any) => {
+        const payload = { progress, data };
+        controller.enqueue(
+          encoder.encode(`data: ${JSON.stringify(payload)}\n\n`)
+        );
+      };
+
+      try {
+        const aiGenerator = new AIReadmeGenerator(replicateToken);
+
+        if (userAnswers && analysisData) {
+          sendProgress("Processing user answers and context...");
+          const readmeContent = await aiGenerator.generateReadme(
+            analysisData,
+            template,
+            language,
+            badges,
+            userAnswers,
+            logoUrl
+          );
+          const finalAnalysis = formatAnalysisForResponse(analysisData);
+
+          // Simpan ke riwayat
+          if (session?.user?.email) {
+            const repoInfo = extractGitHubInfo(
+              analysisData.repository.html_url
+            );
+            if (repoInfo) {
+              const historyKey = `history:${session.user.email}`;
+              const historyEntry: HistoryEntry = {
+                id: `${new Date().toISOString()}-${repoInfo.repo}`,
+                repoName: `${repoInfo.owner}/${repoInfo.repo}`,
+                repoUrl: analysisData.repository.html_url,
+                readme: readmeContent,
+                generatedAt: new Date().toISOString(),
+              };
+              await kv.lpush(historyKey, historyEntry);
+              await kv.ltrim(historyKey, 0, 9);
+            }
+          }
+
+          controller.enqueue(
+            encoder.encode(
+              `data: ${JSON.stringify({
+                done: true,
+                readme: readmeContent,
+                analysis: finalAnalysis,
+              })}\n\n`
+            )
+          );
+        } else {
+          if (!url) throw new Error("GitHub URL is required");
+          const repoInfo = extractGitHubInfo(url);
+          if (!repoInfo) throw new Error("Invalid GitHub URL format.");
+
+          const githubAnalyzer = new GitHubAnalyzer(githubToken, sendProgress);
+          const analysisResult = await githubAnalyzer.analyzeProject(
+            repoInfo.owner,
+            repoInfo.repo
+          );
+          const formattedAnalysis = formatAnalysisForResponse(analysisResult);
+
+          if (isInteractive) {
+            sendProgress("AI is generating clarifying questions...");
+            const questions = await aiGenerator.generateClarifyingQuestions(
+              analysisResult
+            );
+            controller.enqueue(
+              encoder.encode(
+                `data: ${JSON.stringify({
+                  done: true,
+                  analysis: formattedAnalysis,
+                  questions,
+                })}\n\n`
+              )
+            );
+          } else {
+            sendProgress("AI is generating the README content...");
+            const readmeContent = await aiGenerator.generateReadme(
+              analysisResult,
+              template,
+              language,
+              badges,
+              undefined,
+              logoUrl
+            );
+
+            // Simpan ke riwayat
+            if (session?.user?.email) {
+              const historyKey = `history:${session.user.email}`;
+              const historyEntry: HistoryEntry = {
+                id: `${new Date().toISOString()}-${repoInfo.repo}`,
+                repoName: `${repoInfo.owner}/${repoInfo.repo}`,
+                repoUrl: url,
+                readme: readmeContent,
+                generatedAt: new Date().toISOString(),
+              };
+              await kv.lpush(historyKey, historyEntry);
+              await kv.ltrim(historyKey, 0, 9);
+            }
+
+            controller.enqueue(
+              encoder.encode(
+                `data: ${JSON.stringify({
+                  done: true,
+                  readme: readmeContent,
+                  analysis: formattedAnalysis,
+                })}\n\n`
+              )
+            );
+          }
+        }
+        controller.close();
+      } catch (error) {
+        console.error("Streaming API Error:", error);
+        const errorMessage =
+          error instanceof Error
+            ? error.message
+            : "An unknown error occurred during generation.";
+        controller.enqueue(
+          encoder.encode(`data: ${JSON.stringify({ error: errorMessage })}\n\n`)
+        );
+        controller.close();
+      }
+    },
+  });
+
+  return new Response(stream, {
+    headers: {
+      "Content-Type": "text/event-stream",
+      "Cache-Control": "no-cache",
+      Connection: "keep-alive",
+    },
+  });
 }
 
 export async function GET() {
-  return NextResponse.json(
-    {
-      message: "ReadmeGen AI - Enhanced Edition with Agentic Features",
-      version: "2.1.0",
+  return new Response(
+    JSON.stringify({
+      message: "ReadmeGen AI - Streaming API Endpoint",
+      version: "2.1.0-streaming",
       status: "healthy",
-    },
-    { status: 200 }
+    }),
+    {
+      status: 200,
+      headers: { "Content-Type": "application/json" },
+    }
   );
 }

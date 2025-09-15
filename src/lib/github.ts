@@ -21,12 +21,15 @@ interface PackageJson {
   dependencies?: { [key: string]: string };
   devDependencies?: { [key: string]: string };
 }
+type ProgressCallback = (message: string) => void;
 
 export class GitHubAnalyzer {
   private token?: string;
+  private progressCallback: ProgressCallback;
 
-  constructor(token?: string) {
+  constructor(token?: string, progressCallback: ProgressCallback = () => {}) {
     this.token = token;
+    this.progressCallback = progressCallback;
   }
 
   private getHeaders() {
@@ -34,15 +37,16 @@ export class GitHubAnalyzer {
       ? {
           Authorization: `Bearer ${this.token}`,
           Accept: "application/vnd.github.v3+json",
-          "User-Agent": "ReadmeGen-AI/1.0.0",
+          "User-Agent": "ReadmeGen-AI/2.0.0",
         }
       : {
           Accept: "application/vnd.github.v3+json",
-          "User-Agent": "ReadmeGen-AI/1.0.0",
+          "User-Agent": "ReadmeGen-AI/2.0.0",
         };
   }
 
   async getRepository(owner: string, repo: string): Promise<GitHubRepo> {
+    this.progressCallback(`Fetching repository data for ${owner}/${repo}...`);
     try {
       console.log(`Fetching repository: ${owner}/${repo}`);
       const response = await axios.get(
@@ -52,7 +56,7 @@ export class GitHubAnalyzer {
           timeout: 10000,
         }
       );
-      console.log(`Successfully fetched repository data for ${owner}/${repo}`);
+      this.progressCallback(`✓ Successfully fetched repository data.`);
       return {
         name: response.data.name,
         description: response.data.description || "",
@@ -890,13 +894,20 @@ export class GitHubAnalyzer {
   }
 
   async analyzeProject(owner: string, repo: string): Promise<ProjectAnalysis> {
+    this.progressCallback("Starting project analysis...");
     const repository = await this.getRepository(owner, repo);
+    this.progressCallback("Analyzing file structure...");
     const structure = await this.getFileStructure(owner, repo);
 
-    const [fullFileTree, summarizedCodeSnippets] = await Promise.all([
-      this.generateFileTree(owner, repo),
-      this.analyzeCode(owner, repo, structure),
-    ]);
+    this.progressCallback("Generating full file tree...");
+    const fullFileTree = await this.generateFileTree(owner, repo);
+
+    this.progressCallback("Analyzing key code snippets...");
+    const summarizedCodeSnippets = await this.analyzeCode(
+      owner,
+      repo,
+      structure
+    );
 
     const keyFiles = structure
       .filter((file) => file.type === "file")
@@ -919,7 +930,8 @@ export class GitHubAnalyzer {
     let packageJson: PackageJson | null = null;
 
     if (keyFiles.includes("package.json")) {
-      packageManagers.push("npm");
+      this.progressCallback("Parsing package.json...");
+      packageManagers.push("npm"); // Default, can be refined
       const packageContent = await this.getFileContent(
         owner,
         repo,
@@ -933,18 +945,26 @@ export class GitHubAnalyzer {
             ...packageJson?.devDependencies,
           };
           scripts = packageJson?.scripts || {};
+
+          // Detect frameworks and refine package manager
           if (dependencies["next"]) frameworks.push("Next.js");
           if (dependencies["react"]) frameworks.push("React");
           if (dependencies["vue"]) frameworks.push("Vue");
           if (dependencies["@angular/core"]) frameworks.push("Angular");
           if (dependencies["express"]) frameworks.push("Express");
+          if (structure.some((f) => f.name === "yarn.lock"))
+            packageManagers.push("yarn");
+          if (structure.some((f) => f.name === "pnpm-lock.yaml"))
+            packageManagers.push("pnpm");
         } catch {
-          console.warn("Failed to parse package.json");
+          this.progressCallback("Warning: Failed to parse package.json.");
         }
       }
     }
 
-    // NEW: Detect all new features
+    this.progressCallback(
+      "Detecting CI/CD, testing, and deployment configs..."
+    );
     const [
       cicdConfig,
       testConfig,
@@ -963,24 +983,27 @@ export class GitHubAnalyzer {
       Promise.resolve(this.generateProjectLogo(repository)),
     ]);
 
+    this.progressCallback("Analyzing contribution guidelines...");
     const contributionGuide = this.generateContributionGuide(
       structure,
       packageManagers,
       scripts
     );
 
+    this.progressCallback("Generating badges...");
     const badges = this.generateBadges(
       { ...repository, owner },
       cicdConfig,
       testConfig,
       deploymentConfig
     );
+    this.progressCallback("✓ Analysis complete.");
 
     return {
       repository,
       mainLanguage: repository.language,
       frameworks,
-      packageManagers,
+      packageManagers: [...new Set(packageManagers)],
       dependencies,
       scripts,
       hasDocumentation: keyFiles.includes("readme.md"),
@@ -991,7 +1014,6 @@ export class GitHubAnalyzer {
       apiEndpoints,
       envVariables,
       badges,
-      // NEW features
       cicdConfig,
       testConfig,
       deploymentConfig,
