@@ -16,6 +16,7 @@ import {
   ProjectLogo,
   CategorizedDependencies,
   VercelConfig,
+  ProjectType,
 } from "@/types";
 
 const GITHUB_API_BASE = "https://api.github.com";
@@ -57,11 +58,11 @@ export class GitHubAnalyzer {
       ? {
           Authorization: `Bearer ${this.token}`,
           Accept: "application/vnd.github.v3+json",
-          "User-Agent": "ReadmeGen-AI/2.0.0",
+          "User-Agent": "ReadmeGen-AI/2.1.0-deep-analysis",
         }
       : {
           Accept: "application/vnd.github.v3+json",
-          "User-Agent": "ReadmeGen-AI/2.0.0",
+          "User-Agent": "ReadmeGen-AI/2.1.0-deep-analysis",
         };
   }
 
@@ -120,37 +121,6 @@ export class GitHubAnalyzer {
     }
   }
 
-  async getFileStructure(
-    owner: string,
-    repo: string,
-    path = ""
-  ): Promise<FileStructure[]> {
-    try {
-      const response = await axios.get(
-        `${GITHUB_API_BASE}/repos/${owner}/${repo}/contents/${path}`,
-        { headers: this.getHeaders(), timeout: 10000 }
-      );
-      if (!Array.isArray(response.data)) {
-        return [];
-      }
-      return response.data.map(
-        (item: {
-          name: string;
-          path: string;
-          type: "dir" | "file";
-          size: number;
-        }) => ({
-          name: item.name,
-          path: item.path,
-          type: item.type,
-          size: item.size,
-        })
-      );
-    } catch {
-      return [];
-    }
-  }
-
   async getFileContent(
     owner: string,
     repo: string,
@@ -167,6 +137,159 @@ export class GitHubAnalyzer {
       return null;
     } catch {
       return null;
+    }
+  }
+
+  private async getFileStructureRecursive(
+    owner: string,
+    repo: string
+  ): Promise<FileStructure[]> {
+    try {
+      const response = await axios.get(
+        `${GITHUB_API_BASE}/repos/${owner}/${repo}/git/trees/main?recursive=1`,
+        { headers: this.getHeaders() }
+      );
+      const ignored = [".git", "node_modules", ".next", "dist", "build"];
+      return response.data.tree
+        .filter(
+          (node: { path: string }) =>
+            !ignored.some((dir) => node.path.startsWith(dir))
+        )
+        .map((node: { path: string; type: "blob" | "tree"; size: number }) => ({
+          name: node.path.split("/").pop() || "",
+          path: node.path,
+          type: node.type === "tree" ? "dir" : "file",
+          size: node.size,
+        }));
+    } catch (error) {
+      console.warn(
+        "Could not fetch recursive file tree, falling back to root level.",
+        error
+      );
+      const response = await axios.get(
+        `${GITHUB_API_BASE}/repos/${owner}/${repo}/contents/`,
+        { headers: this.getHeaders() }
+      );
+      return response.data.map(
+        (item: {
+          name: string;
+          path: string;
+          type: "dir" | "file";
+          size: number;
+        }) => ({
+          name: item.name,
+          path: item.path,
+          type: item.type,
+          size: item.size,
+        })
+      );
+    }
+  }
+
+  private async analyzeGoProject(
+    owner: string,
+    repo: string,
+    structure: FileStructure[]
+  ) {
+    this.progressCallback("Running Go-specific analysis...");
+    const dependencies: Record<string, string> = {};
+    let databaseTech = "Unknown"; // Variabel untuk menyimpan teknologi database
+
+    // 1. Prioritas utama: go.mod
+    const goModContent = await this.getFileContent(owner, repo, "go.mod");
+    if (goModContent) {
+      const requireRegex =
+        /require\s*\(([\s\S]*?)\)|require\s+([\w\.\/]+)\s+v[\d\.]+/g;
+      let match;
+      while ((match = requireRegex.exec(goModContent)) !== null) {
+        const block = match[1] || match[0];
+        const dependencyRegex = /([\w\.\/]+)\s+v[\d\.]+/g;
+        let depMatch;
+        while ((depMatch = dependencyRegex.exec(block)) !== null) {
+          const depName = depMatch[1].trim();
+          dependencies[depName] = "latest";
+          // Deteksi database dari dependensi
+          if (depName.includes("go-sqlite3")) {
+            databaseTech = "SQLite";
+          } else if (depName.includes("pq") || depName.includes("pgx")) {
+            databaseTech = "PostgreSQL";
+          }
+        }
+      }
+    }
+
+    // 2. Prioritas kedua: Konfirmasi dari kode sumber
+    const dbFileContent = await this.getFileContent(owner, repo, "database.go");
+    if (dbFileContent && dbFileContent.includes(`sql.Open("sqlite3"`)) {
+      // Jika kode secara eksplisit membuka koneksi sqlite3, ini adalah konfirmasi kuat.
+      databaseTech = "SQLite";
+    }
+
+    const isDiscordBot = Object.keys(dependencies).some((dep) =>
+      dep.includes("discordgo")
+    );
+    const projectType: ProjectType = isDiscordBot ? "Discord Bot" : "Backend";
+
+    // Tambahkan databaseTech ke dalam frameworks untuk diteruskan ke AI
+    const frameworks = databaseTech !== "Unknown" ? [databaseTech] : [];
+
+    return { dependencies, scripts: {}, frameworks, projectType };
+  }
+
+  private async analyzeJavaScriptProject(
+    owner: string,
+    repo: string,
+    structure: FileStructure[]
+  ) {
+    this.progressCallback("Running JavaScript/TypeScript analysis...");
+    const packageContent = await this.getFileContent(
+      owner,
+      repo,
+      "package.json"
+    );
+    if (!packageContent)
+      return {
+        dependencies: {},
+        scripts: {},
+        frameworks: [],
+        projectType: "Web App" as ProjectType,
+      };
+
+    try {
+      const packageJson = JSON.parse(packageContent) as PackageJson;
+      const dependencies = {
+        ...(packageJson?.dependencies || {}),
+        ...(packageJson?.devDependencies || {}),
+      };
+      const scripts = packageJson?.scripts || {};
+      const categorized = this.categorizeDependencies(dependencies);
+      const frameworks = categorized["UI Framework"] || [];
+
+      let projectType: ProjectType = "Web App";
+      if (dependencies["discord.js"] || dependencies["discord-api-types"]) {
+        projectType = "Discord Bot";
+      } else if (
+        frameworks.length === 0 &&
+        (dependencies["express"] || dependencies["fastify"])
+      ) {
+        projectType = "Backend";
+      } else if (
+        !frameworks.some((f) =>
+          ["next", "react", "vue", "angular", "svelte"].includes(f)
+        )
+      ) {
+        projectType = "Library/Tool";
+      }
+
+      return { dependencies, scripts, frameworks, projectType };
+    } catch (e) {
+      this.progressCallback("Warning: Could not parse package.json.");
+      return {
+        dependencies: {},
+        scripts: {},
+        frameworks: [],
+        projectType: "Web App" as ProjectType,
+      };
     }
   }
 
@@ -256,11 +379,9 @@ export class GitHubAnalyzer {
       let hasDeployment = false;
 
       for (const file of githubActionsFiles.slice(0, 3)) {
-        // Limit to 3 files
         const content = await this.getFileContent(owner, repo, file.path);
         if (content) {
           try {
-            // FIX 1: Using a specific type instead of 'any'
             const workflowConfig = yaml.load(content) as GitHubWorkflow;
             workflows.push(
               workflowConfig.name || file.name.replace(/\.ya?ml$/, "")
@@ -269,7 +390,6 @@ export class GitHubAnalyzer {
             if (workflowConfig.jobs) {
               for (const jobName in workflowConfig.jobs) {
                 const job = workflowConfig.jobs[jobName];
-                // FIX 2: Defining the type for 'step' instead of 'any'
                 const jobSteps =
                   job.steps?.map((step: { name?: string; run?: string }) => ({
                     name: step.name,
@@ -509,6 +629,87 @@ export class GitHubAnalyzer {
     return { primaryColor: "#3498db", secondaryColor: "#2980b9" };
   }
 
+  private async getFilePriority(
+    filePath: string,
+    language: string
+  ): Promise<number> {
+    const genericPrio: { [key: string]: number } = {
+      readme: 11,
+      "docker-compose": 10,
+      dockerfile: 9,
+      ".env": 8,
+    };
+
+    const langPrio: { [lang: string]: { [key: string]: number } } = {
+      go: { "go.mod": 12, "main.go": 9, "cmd/": 8, "internal/": 7, "pkg/": 7 },
+      javascript: {
+        "package.json": 12,
+        "src/index": 9,
+        "src/main": 9,
+        "src/app": 8,
+        "server.js": 8,
+        "api/": 7,
+      },
+      typescript: {
+        "package.json": 12,
+        "src/index": 9,
+        "src/main": 9,
+        "src/app": 8,
+        "server.ts": 8,
+        "api/": 7,
+      },
+      python: { "requirements.txt": 12, "main.py": 9, "app.py": 9 },
+    };
+
+    const lowerPath = filePath.toLowerCase();
+    for (const pattern in genericPrio) {
+      if (lowerPath.includes(pattern)) return genericPrio[pattern];
+    }
+
+    const specificLangPrio = langPrio[language.toLowerCase()];
+    if (specificLangPrio) {
+      for (const pattern in specificLangPrio) {
+        if (lowerPath.includes(pattern)) return specificLangPrio[pattern];
+      }
+    }
+
+    return 1;
+  }
+
+  private async analyzeCode(
+    owner: string,
+    repo: string,
+    structure: FileStructure[],
+    language: string
+  ): Promise<CodeSnippet[]> {
+    const filesWithPriority = await Promise.all(
+      structure
+        .filter((f) => f.type === "file")
+        .map(async (f) => ({
+          file: f,
+          priority: await this.getFilePriority(f.path, language),
+        }))
+    );
+
+    const filesToAnalyze = filesWithPriority
+      .sort((a, b) => b.priority - a.priority)
+      .slice(0, 10)
+      .map((item) => item.file);
+
+    const codeSnippets: CodeSnippet[] = [];
+    for (const file of filesToAnalyze) {
+      const content = await this.getFileContent(owner, repo, file.path);
+      if (content) {
+        codeSnippets.push({
+          fileName: file.path,
+          content: content,
+          summary: "Awaiting AI summary",
+        });
+      }
+    }
+    return codeSnippets;
+  }
+
   private async detectApiEndpoints(
     owner: string,
     repo: string,
@@ -598,18 +799,19 @@ export class GitHubAnalyzer {
   private async detectEnvVariables(
     owner: string,
     repo: string,
-    structure: FileStructure[]
+    structure: FileStructure[],
+    codeSnippets: CodeSnippet[]
   ): Promise<EnvironmentVariable[]> {
     const envVars: EnvironmentVariable[] = [];
-    const envFiles = structure.filter(
+    const envFile = structure.find(
       (file) =>
         file.name === ".env.example" ||
         file.name === ".env.sample" ||
         file.name === ".env.template"
     );
 
-    for (const file of envFiles) {
-      const content = await this.getFileContent(owner, repo, file.path);
+    if (envFile) {
+      const content = await this.getFileContent(owner, repo, envFile.path);
       if (content) {
         const lines = content.split("\n");
         lines.forEach((line) => {
@@ -626,7 +828,27 @@ export class GitHubAnalyzer {
       }
     }
 
-    return envVars;
+    // Analisis dari kode sumber untuk variabel yang tidak ada di .env.example
+    for (const snippet of codeSnippets) {
+      // Contoh untuk Go (bisa diperluas untuk bahasa lain)
+      if (snippet.fileName.endsWith(".go")) {
+        const matches = snippet.content.matchAll(/os\.Getenv\("([^"]+)"\)/g);
+        for (const match of matches) {
+          const key = match[1];
+          if (!envVars.some((v) => v.key === key)) {
+            envVars.push({
+              key: key,
+              description: this.getEnvDescription(key),
+              required: true, // Asumsikan wajib jika dipanggil di kode
+              defaultValue: undefined,
+            });
+          }
+        }
+      }
+    }
+
+    // Hapus duplikat
+    return [...new Map(envVars.map((item) => [item.key, item])).values()];
   }
 
   private getEnvDescription(key: string): string {
@@ -648,178 +870,6 @@ export class GitHubAnalyzer {
     };
 
     return descriptions[key] || "Environment variable";
-  }
-
-  private generateBadges(
-    repo: GitHubRepo & { owner: string },
-    cicdConfig?: CICDConfig,
-    testConfig?: TestConfig,
-    deploymentConfig?: DeploymentConfig
-  ): Badge[] {
-    const badges: Badge[] = [];
-    const repoPath = `${repo.owner}/${repo.name}`;
-
-    if (repo.license) {
-      badges.push({
-        name: "License",
-        url: `https://img.shields.io/github/license/${repoPath}`,
-        link: `${repo.html_url}/blob/main/LICENSE`,
-        category: "license",
-      });
-    }
-
-    badges.push({
-      name: "Stars",
-      url: `https://img.shields.io/github/stars/${repoPath}?style=social`,
-      link: `${repo.html_url}/stargazers`,
-      category: "social",
-    });
-
-    if (cicdConfig?.platform === "github-actions") {
-      badges.push({
-        name: "CI",
-        url: `https://img.shields.io/github/actions/workflow/status/${repoPath}/ci.yml?branch=main`,
-        link: `${repo.html_url}/actions`,
-        category: "build",
-      });
-    }
-
-    if (deploymentConfig?.platform === "vercel") {
-      badges.push({
-        name: "Deploy",
-        url: `https://vercel.com/button`,
-        link: `https://vercel.com/new/clone?repository-url=${repo.html_url}`,
-        category: "deployment",
-      });
-    }
-
-    return badges;
-  }
-
-  private async generateFileTree(owner: string, repo: string): Promise<string> {
-    try {
-      const response = await axios.get(
-        `${GITHUB_API_BASE}/repos/${owner}/${repo}/git/trees/main?recursive=1`,
-        { headers: this.getHeaders() }
-      );
-      const ignoredDirs = [".git", "node_modules", ".next", "dist", "build"];
-      return response.data.tree
-        .map((node: { path: string }) => node.path)
-        .filter(
-          (path: string) => !ignoredDirs.some((dir) => path.startsWith(dir))
-        )
-        .slice(0, 100) // Limit to first 100 files for performance
-        .join("\n");
-    } catch (error) {
-      console.warn("Could not fetch recursive file tree.", error);
-      return "File tree not available.";
-    }
-  }
-
-  private getFilePriority(filePath: string): number {
-    const priorityPatterns: { [key: string]: number } = {
-      "package.json": 10,
-      "docker-compose.yml": 9,
-      dockerfile: 9,
-      "src/main.": 8,
-      "src/index.": 8,
-      "src/app.": 8,
-      "src/server.": 8,
-      ".env.example": 7,
-      ".env.sample": 7,
-      "src/lib/": 6,
-      "src/utils/": 6,
-      "src/core/": 6,
-      "src/components/": 5,
-      "src/ui/": 5,
-      "src/api/": 5,
-    };
-    for (const pattern in priorityPatterns) {
-      if (filePath.toLowerCase().includes(pattern)) {
-        return priorityPatterns[pattern];
-      }
-    }
-    return 1;
-  }
-
-  private async analyzeCode(
-    owner: string,
-    repo: string,
-    structure: FileStructure[]
-  ): Promise<CodeSnippet[]> {
-    const filesToAnalyze = structure
-      .filter((file) => file.type === "file")
-      .sort(
-        (a, b) => this.getFilePriority(b.path) - this.getFilePriority(a.path)
-      )
-      .slice(0, 7);
-
-    const codeSnippets: CodeSnippet[] = [];
-    for (const file of filesToAnalyze) {
-      const content = await this.getFileContent(owner, repo, file.path);
-      if (content) {
-        codeSnippets.push({
-          fileName: file.path,
-          content: content,
-          summary: "Awaiting AI summary",
-          detectedFeatures: this.detectCodeFeatures(content),
-          complexity: this.assessComplexity(content),
-          mainFunction: this.extractMainFunction(content),
-        });
-      }
-    }
-    return codeSnippets;
-  }
-
-  private detectCodeFeatures(content: string): string[] {
-    const features: string[] = [];
-    const lowerContent = content.toLowerCase();
-
-    if (lowerContent.includes("react") || lowerContent.includes("jsx"))
-      features.push("React");
-    if (lowerContent.includes("vue")) features.push("Vue");
-    if (lowerContent.includes("angular")) features.push("Angular");
-    if (lowerContent.includes("express")) features.push("Express");
-    if (lowerContent.includes("next")) features.push("Next.js");
-    if (lowerContent.includes("mongoose") || lowerContent.includes("mongodb"))
-      features.push("MongoDB");
-    if (lowerContent.includes("sequelize") || lowerContent.includes("postgres"))
-      features.push("PostgreSQL");
-    if (lowerContent.includes("prisma")) features.push("Prisma");
-    if (lowerContent.includes("auth") || lowerContent.includes("jwt"))
-      features.push("Authentication");
-    if (lowerContent.includes("axios") || lowerContent.includes("fetch"))
-      features.push("API Integration");
-    if (lowerContent.includes("graphql")) features.push("GraphQL");
-    if (lowerContent.includes("jest") || lowerContent.includes("test"))
-      features.push("Testing");
-
-    return [...new Set(features)];
-  }
-
-  private assessComplexity(content: string): "low" | "medium" | "high" {
-    const lines = content.split("\n").length;
-    const functions = (content.match(/function|=>|\bdef\b|\bclass\b/g) || [])
-      .length;
-    const imports = (content.match(/import|require|from/g) || []).length;
-    const complexity = lines + functions * 2 + imports;
-
-    if (complexity < 100) return "low";
-    if (complexity < 300) return "medium";
-    return "high";
-  }
-
-  private extractMainFunction(content: string): string {
-    const jsFunction =
-      content.match(/export\s+(default\s+)?function\s+(\w+)/) ||
-      content.match(/const\s+(\w+)\s*=.*?=>/);
-    if (jsFunction) return jsFunction[jsFunction.length - 1];
-
-    const pyFunction =
-      content.match(/def\s+main\s*\(/) || content.match(/def\s+(\w+)\s*\(/);
-    if (pyFunction) return pyFunction[1] || "main";
-
-    return "main";
   }
 
   private generateContributionGuide(
@@ -859,142 +909,130 @@ export class GitHubAnalyzer {
     return { hasCustomGuide, suggestedSteps, codeOfConduct };
   }
 
-  private async getFileStructureRecursive(
-    owner: string,
-    repo: string
-  ): Promise<FileStructure[]> {
-    try {
-      const response = await axios.get(
-        `${GITHUB_API_BASE}/repos/${owner}/${repo}/git/trees/main?recursive=1`,
-        { headers: this.getHeaders() }
-      );
-      const ignored = [".git", "node_modules", ".next", "dist", "build"];
-      return response.data.tree
-        .filter(
-          (node: { path: string }) =>
-            !ignored.some((dir) => node.path.startsWith(dir))
-        )
-        .map((node: { path: string; type: "blob" | "tree"; size: number }) => ({
-          name: node.path.split("/").pop() || "",
-          path: node.path,
-          type: node.type === "tree" ? "dir" : "file",
-          size: node.size,
-        }));
-    } catch (error) {
-      console.warn(
-        "Could not fetch recursive file tree, falling back to root level.",
-        error
-      );
-      return this.getFileStructure(owner, repo, "");
-    }
-  }
-
   async analyzeProject(owner: string, repo: string): Promise<ProjectAnalysis> {
-    this.progressCallback("Starting project analysis...");
+    this.progressCallback(
+      "Stage 1: Initializing and fetching repository data..."
+    );
     const repository = await this.getRepository(owner, repo);
-    this.progressCallback("Analyzing file structure...");
+    const mainLanguage = repository.language.toLowerCase();
+
+    this.progressCallback(
+      `✓ Main language detected: ${repository.language}. Tailoring analysis...`
+    );
     const allFiles = await this.getFileStructureRecursive(owner, repo);
 
-    this.progressCallback("Generating full file tree...");
-    const fullFileTree = await this.generateFileTree(owner, repo);
+    let langSpecifics;
+    const packageManagers: string[] = [];
 
-    this.progressCallback("Analyzing key code snippets...");
+    if (allFiles.some((f) => f.name.toLowerCase() === "package.json")) {
+      packageManagers.push("npm");
+      if (allFiles.some((f) => f.name.toLowerCase() === "yarn.lock"))
+        packageManagers.push("yarn");
+      if (allFiles.some((f) => f.name.toLowerCase() === "pnpm-lock.yaml"))
+        packageManagers.push("pnpm");
+    }
+
+    // Sesuaikan pemanggilan fungsi berdasarkan bahasa
+    switch (mainLanguage) {
+      case "go":
+        langSpecifics = await this.analyzeGoProject(owner, repo, allFiles);
+        break;
+      case "javascript":
+      case "typescript":
+        // Anda bisa tetap menggunakan analyzeJavaScriptProject atau membuatnya lebih canggih
+        langSpecifics = await this.analyzeJavaScriptProject(
+          owner,
+          repo,
+          allFiles
+        );
+        break;
+      default:
+        this.progressCallback(
+          `Using generic analysis for ${repository.language}.`
+        );
+        langSpecifics = {
+          dependencies: {},
+          scripts: {},
+          frameworks: [],
+          projectType: "Unknown" as ProjectType,
+        };
+    }
+
+    this.progressCallback(
+      "Stage 2: Analyzing code structure and core logic..."
+    );
     const summarizedCodeSnippets = await this.analyzeCode(
       owner,
       repo,
-      allFiles
+      allFiles,
+      mainLanguage
     );
 
-    const keyFiles = allFiles
-      .filter((file) => file.type === "file")
-      .map((file) => file.name.toLowerCase());
+    this.progressCallback(
+      "Stage 3: Detecting configurations (CI/CD, Deployment, Tests)..."
+    );
 
     let packageJson: PackageJson | null = null;
-    let dependencies: Record<string, string> = {};
-    let scripts: Record<string, string> = {};
-    let frameworks: string[] = [];
-    // FIX 3: Use 'const' as packageManagers is never reassigned
-    const packageManagers: string[] = [];
-    let categorizedDependencies: CategorizedDependencies = {};
-
-    if (keyFiles.includes("package.json")) {
-      this.progressCallback("Parsing package.json...");
-      const packageContent = await this.getFileContent(
-        owner,
-        repo,
-        "package.json"
-      );
-      if (packageContent) {
+    if (packageManagers.includes("npm")) {
+      const content = await this.getFileContent(owner, repo, "package.json");
+      if (content) {
         try {
-          packageJson = JSON.parse(packageContent);
-          dependencies = {
-            ...(packageJson?.dependencies || {}),
-            ...(packageJson?.devDependencies || {}),
-          };
-          scripts = packageJson?.scripts || {};
-          packageManagers.push("npm");
-          if (keyFiles.includes("yarn.lock")) packageManagers.push("yarn");
-          if (keyFiles.includes("pnpm-lock.yaml")) packageManagers.push("pnpm");
-          this.progressCallback("Categorizing dependencies...");
-          categorizedDependencies = this.categorizeDependencies(dependencies);
-          frameworks = categorizedDependencies["UI Framework"] || [];
-          // FIX 4: Remove unused 'e' variable in catch block
-        } catch {
-          this.progressCallback("Warning: Failed to parse package.json.");
+          packageJson = JSON.parse(content);
+        } catch (e) {
+          console.warn("Could not parse package.json for config detection");
         }
       }
     }
 
-    this.progressCallback(
-      "Detecting CI/CD, testing, and deployment configs..."
-    );
+    // Panggil Promise.all dengan fungsi yang sudah diperbarui
     const [
       cicdConfig,
       testConfig,
       deploymentConfig,
-      envVariables,
+      envVariables, // envVariables sekarang dihitung dengan logika baru
       apiEndpoints,
     ] = await Promise.all([
       this.detectCICD(owner, repo, allFiles),
       this.detectTestConfig(owner, repo, allFiles, packageJson),
       this.detectDeploymentConfig(owner, repo, allFiles, packageJson),
-      this.detectEnvVariables(owner, repo, allFiles),
+      this.detectEnvVariables(owner, repo, allFiles, summarizedCodeSnippets), // Logika baru
       this.detectApiEndpoints(owner, repo, summarizedCodeSnippets),
     ]);
 
-    this.progressCallback("Analyzing contribution guidelines...");
     const contributionGuide = this.generateContributionGuide(
       allFiles,
       packageManagers,
-      scripts
+      langSpecifics.scripts
     );
 
-    this.progressCallback("Generating badges...");
-    const badges = this.generateBadges(
-      { ...repository, owner },
-      cicdConfig,
-      testConfig,
-      deploymentConfig
-    );
+    const fullFileTree = allFiles
+      .map((f) => f.path)
+      .slice(0, 100)
+      .join("\n");
 
-    this.progressCallback("✓ Analysis complete.");
+    this.progressCallback("✓ Analysis complete. Compiling final report.");
 
     return {
       repository,
       mainLanguage: repository.language,
-      frameworks,
-      packageManagers: [...new Set(packageManagers)],
-      dependencies,
-      categorizedDependencies,
-      scripts,
-      hasDocumentation: keyFiles.includes("readme.md"),
+      projectType: langSpecifics.projectType,
+      frameworks: langSpecifics.frameworks,
+      packageManagers,
+      dependencies: langSpecifics.dependencies,
+      categorizedDependencies: this.categorizeDependencies(
+        langSpecifics.dependencies
+      ),
+      scripts: langSpecifics.scripts,
+      hasDocumentation: allFiles.some((f) =>
+        f.name.toLowerCase().includes("readme")
+      ),
       structure: allFiles,
-      keyFiles,
+      keyFiles: allFiles.map((f) => f.name.toLowerCase()),
       fullFileTree,
       summarizedCodeSnippets,
       apiEndpoints,
       envVariables,
-      badges,
+      badges: [],
       cicdConfig,
       testConfig,
       deploymentConfig,

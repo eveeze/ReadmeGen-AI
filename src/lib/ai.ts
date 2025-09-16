@@ -92,14 +92,15 @@ export class AIReadmeGenerator {
     language: ReadmeLanguage,
     customBadges: Badge[],
     userAnswers?: Record<string, string>,
-    logoUrl?: string // New parameter for user-provided logo
+    logoUrl?: string
   ): string {
     const {
       repository,
       mainLanguage,
+      projectType,
       frameworks,
       packageManagers,
-      dependencies,
+      categorizedDependencies,
       scripts,
       summarizedCodeSnippets,
       fullFileTree,
@@ -112,12 +113,9 @@ export class AIReadmeGenerator {
     } = analysis;
 
     let logoSection = "";
-
     if (logoUrl && logoUrl.trim()) {
-      // Jika user memberikan logoUrl, gunakan itu
       logoSection = `<p align="center"><img src="${logoUrl.trim()}" alt="Project Logo" width="130"></p>`;
     } else if (analysis.projectLogo?.svgContent) {
-      // Jika tidak ada logoUrl dari user, baru gunakan generated logo
       logoSection = `<p align="center">${analysis.projectLogo.svgContent}</p>`;
     }
 
@@ -149,110 +147,149 @@ export class AIReadmeGenerator {
     const userAnswersSection =
       userAnswers && Object.keys(userAnswers).length > 0
         ? `
-**ADDITIONAL USER-PROVIDED CONTEXT:**
+**ADDITIONAL USER-PROVIDED CONTEXT (Use this to enrich the description, but analysis details take precedence if there is a conflict):**
 ${Object.entries(userAnswers)
-  .map(([question, answer]) => `- Question: ${question}\n  - Answer: ${answer}`)
+  .map(
+    ([question, answer]) =>
+      `- User Question: ${question}\n  - User Answer: ${answer}`
+  )
   .join("\n")}
 `
         : "";
 
+    // --- PROMPT UTAMA YANG DIPERBAIKI ---
     return `
-      Generate a comprehensive, professional README.md for a GitHub repository in ${language}.
-      Follow this structure precisely:
+            You are an expert technical writer. Generate a comprehensive, professional README.md in ${language}.
+            **Your single source of truth is the 'DEEP PROJECT ANALYSIS DETAILS' section below.**
+            Adhere strictly to these rules:
+            1.  **DO NOT** infer or invent any features, technologies, or configurations that are not explicitly listed in the analysis.
+            2.  If information is missing (e.g., project's primary purpose), state that it needs to be described, do not make it up.
+            3.  Use the provided file summaries and project structure to accurately describe the project's functionality.
+            4.  Follow the requested structure precisely.
 
-      1.  **Header**:
-          ${logoSection}
-          <h1 align="center">${repository.name}</h1>
-          <p align="center">${
-            repository.description || "A brief description of the project."
-          }</p>
-          <p align="center">Get started by ... (fill in a brief call to action)</p>
-          <div align="center">${badgeMarkdown}</div>
+            **1. Header**:
+            ${logoSection}
+            <h1 align="center">${repository.name}</h1>
+            <p align="center">${
+              repository.description || "A brief description of the project."
+            }</p>
+            <p align="center">Get started by ... (fill in a brief, relevant call to action based on the project type: e.g., 'deploying your own instance' or 'installing the CLI tool')</p>
+            <div align="center">${badgeMarkdown}</div>
 
-      2.  **Table of Contents**:
-          - <a href="#about">About The Project</a>
-          - <a href="#getting-started">Getting Started</a>
-          - <a href="#features">Features</a>
-          - <a href="#tech-stack">Tech Stack</a>
-          - <a href="#contributing">Contributing</a>
-          - <a href="#license">License</a>
-          - <a href="#contact">Contact</a>
+            **2. Table of Contents**: (Generate this based on the sections you create)
 
-      3.  **About The Project**:
-          Provide a more detailed overview of the project. Explain the "why" behind it, not just the "what". What problem does it solve?
+            **3. About The Project**:
+            Provide a detailed overview. Explain the "why" behind it, not just the "what". Base this section *strictly* on the repository description, project type, and key file summaries from the analysis.
 
-      4.  **Getting Started**:
-          Provide clear, step-by-step instructions on how to get a local copy up and running. Include prerequisites and installation steps based on the analysis.
+            **4. Getting Started**:
+            Provide clear, step-by-step instructions. Use the detected package managers and 'build'/'dev' scripts to write accurate installation and startup commands.
 
-      5.  **Features**:
-          - List the key features of the project based on the analysis.
+            **5. Features**:
+            List the key features. Deduce features *only* from the analysis data: frameworks used, CI/CD, testing setup, Docker support, API endpoints, etc.
 
-      6.  **Tech Stack**:
-          - List the technologies used based on the analysis.
+            **6. Tech Stack**:
+            List the technologies used. Use the 'Technology Stack' and 'Categorized Dependencies' from the analysis for a well-structured list.
 
-      7.  **Contributing**:
-          - Provide guidelines for contributing to the project based on the analysis.
+            **7. Configuration**:
+            If environment variables are detected in the analysis, explain how to set them up using the provided keys.
 
-      8.  **License**:
-          - State the project's license based on the analysis.
+            **8. Contributing**:
+            Provide guidelines based on the detected contribution guide or suggest standard steps.
 
-      9.  **Contact**:
-          - Provide contact information for the project maintainer(s).
+            **9. License**:
+            State the project's license based on the analysis.
 
-      **PROJECT ANALYSIS DETAILS:**
-      - **Style Guidance**: ${styleGuidance}
-      - **Repository Information**:
-        - Name: ${repository.name}
-        - Description: ${repository.description || "No description provided."}
-        - Main Language: ${mainLanguage}
-        - Topics: ${repository.topics.join(", ") || "None"}
-        - License: ${repository.license?.name || "Not specified"}
-      - **Frameworks & Key Libraries**: ${
-        frameworks.join(", ") || "None detected"
-      }
-      - **Package Managers**: ${packageManagers.join(", ") || "None detected"}
-      ${userAnswersSection}
-      - **CI/CD Configuration**: ${
-        cicdConfig
-          ? `${cicdConfig.platform} (${cicdConfig.configFile})`
-          : "None"
-      }
-      - **Testing Configuration**: ${
-        testConfig
-          ? `${testConfig.framework} with commands: ${testConfig.commands.join(
-              ", "
-            )}`
-          : "None"
-      }
-      - **Deployment Configuration**: ${
-        deploymentConfig
-          ? `${
-              deploymentConfig.platform
-            } with files: ${deploymentConfig.configFiles.join(", ")}`
-          : "None"
-      }
-      - **Contribution Guide**: ${
-        contributionGuide.hasCustomGuide
-          ? "Custom guide detected"
-          : "No custom guide"
-      }
-      - **Environment Variables**: ${
-        envVariables.length > 0
-          ? `${envVariables.length} variables found`
-          : "None"
-      }
-      - **API Endpoints**: ${
-        apiEndpoints.length > 0
-          ? `${apiEndpoints.length} endpoints found`
-          : "None"
-      }
-      - **Key Dependencies**: ${
-        Object.keys(dependencies).slice(0, 10).join(", ") || "None"
-      }
-      - **Available Scripts**: ${Object.keys(scripts).join(", ") || "None"}
+            ---
+            **DEEP PROJECT ANALYSIS DETAILS (YOUR ONLY SOURCE OF TRUTH):**
 
-      Generate ONLY the README.md content. Make it engaging, comprehensive, and professional.
-    `;
+            - **Style Guidance**: ${styleGuidance}
+            - **Project Core Info**:
+                - Name: ${repository.name}
+                - Description: ${
+                  repository.description || "No description provided."
+                }
+                - Main Language: ${mainLanguage}
+                - Project Type: ${projectType}
+                - Topics: ${repository.topics.join(", ") || "None"}
+                - License: ${repository.license?.name || "Not specified"}
+
+            ${userAnswersSection}
+
+            - **Technology Stack**:
+                - Frameworks & Core Tech: ${
+                  frameworks.join(", ") || "None detected"
+                }
+                - Package Managers: ${
+                  packageManagers.join(", ") || "None detected"
+                }
+                - Categorized Dependencies: ${JSON.stringify(
+                  categorizedDependencies,
+                  null,
+                  2
+                )}
+
+            - **Development & Operations**:
+                - Available Scripts: ${
+                  Object.keys(scripts).join(", ") || "None"
+                }
+                - CI/CD Configuration: ${
+                  cicdConfig
+                    ? `${cicdConfig.platform} (${cicdConfig.configFile})`
+                    : "None"
+                }
+                - Testing Configuration: ${
+                  testConfig
+                    ? `${
+                        testConfig.framework
+                      } with commands: ${testConfig.commands.join(", ")}`
+                    : "None"
+                }
+                - Deployment Configuration: ${
+                  deploymentConfig
+                    ? `${
+                        deploymentConfig.platform
+                      } with files: ${deploymentConfig.configFiles.join(", ")}`
+                    : "None"
+                }
+
+            - **Project Internals**:
+                - Environment Variables Detected (${envVariables.length}):
+                    ${
+                      envVariables
+                        .map(
+                          (e) =>
+                            `- ${e.key}${
+                              e.defaultValue
+                                ? ` (default: ${e.defaultValue})`
+                                : ""
+                            }`
+                        )
+                        .join("\n") || "None"
+                    }
+                - API Endpoints Detected (${apiEndpoints.length}):
+                    ${
+                      apiEndpoints
+                        .map((ep) => `- ${ep.method} ${ep.path}`)
+                        .join("\n") || "None"
+                    }
+                - Key Code Summaries:
+                    ${
+                      summarizedCodeSnippets
+                        .map(
+                          (s) =>
+                            `File: ${s.fileName}\nSummary: ${s.summary}\n---`
+                        )
+                        .join("\n") || "No summaries available."
+                    }
+
+            - **Repository Structure**:
+            \`\`\`
+            ${fullFileTree}
+            \`\`\`
+
+            ---
+            Generate ONLY the README.md content. Be factual, comprehensive, and adhere strictly to the analysis provided.
+        `;
   }
 
   // Enhanced architecture prompt with better analysis
@@ -430,7 +467,7 @@ Keep the summary concise and technical.`;
       let readmeContent = "";
       const input = {
         prompt: prompt,
-        max_tokens: 12000, // Increased for comprehensive README
+        max_tokens: 20000, // Increased for comprehensive README
         temperature: 0.7,
         top_p: 0.9,
         top_k: 50,
@@ -452,7 +489,9 @@ Keep the summary concise and technical.`;
         console.warn("AI generated empty content, falling back to template");
         throw new Error("AI generated empty content");
       }
-
+      console.log("--- RAW GENERATED README START ---");
+      console.log(readmeContent.trim());
+      console.log("--- RAW GENERATED README END ---");
       return readmeContent.trim();
     } catch (error) {
       console.error("IBM Granite 3.3 AI generation error:", error);
