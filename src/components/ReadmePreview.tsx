@@ -24,21 +24,7 @@ export const ReadmePreview: React.FC<ReadmePreviewProps> = ({ content }) => {
   const [copied, setCopied] = useState(false);
   const [isMaximized, setIsMaximized] = useState(false);
   const previewRef = useRef<HTMLDivElement>(null);
-  const [currentTime, setCurrentTime] = useState<string | null>(null); // 1. Inisialisasi dengan null
 
-  // 2. Gunakan useEffect untuk mengatur waktu hanya di sisi klien
-  useEffect(() => {
-    // Atur waktu awal saat komponen pertama kali di-mount di klien
-    setCurrentTime(new Date().toLocaleTimeString());
-
-    const timer = setInterval(() => {
-      setCurrentTime(new Date().toLocaleTimeString());
-    }, 1000);
-
-    return () => clearInterval(timer);
-  }, []); // Dependensi kosong memastikan ini hanya berjalan sekali di klien
-
-  // ... (sisa dari useEffect untuk markdown processing tetap sama)
   useEffect(() => {
     if (viewMode === "preview" && previewRef.current) {
       // Handle Mermaid diagrams
@@ -47,8 +33,7 @@ export const ReadmePreview: React.FC<ReadmePreviewProps> = ({ content }) => {
       mermaidBlocks.forEach((block) => {
         const mermaidContent = block.textContent || "";
         block.innerHTML = `
-          <div class="mermaid-preview-terminal relative overflow-hidden">
-            <div class="absolute top-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-terminal-green to-transparent"></div>
+          <div class="mermaid-preview-terminal">
             <div class="flex items-center justify-between mb-4">
               <div class="flex items-center space-x-3">
                 <div class="w-8 h-8 bg-terminal-green/20 border border-terminal-green rounded flex items-center justify-center">
@@ -57,22 +42,13 @@ export const ReadmePreview: React.FC<ReadmePreviewProps> = ({ content }) => {
                   </svg>
                 </div>
                 <div>
-                  <div class="text-sm font-bold text-terminal-yellow font-mono">[DIAGRAM] Architecture Flow</div>
-                  <div class="text-xs text-terminal-comment font-mono">mermaid.js rendering</div>
+                  <div class="text-sm font-bold terminal-yellow font-mono">[DIAGRAM] Architecture Flow</div>
+                  <div class="text-xs terminal-comment font-mono">mermaid.js rendering</div>
                 </div>
               </div>
             </div>
             <div class="mermaid-code-terminal">
 ${mermaidContent}
-            </div>
-            <div class="mt-3 flex items-center justify-between text-xs">
-              <div class="flex items-center space-x-2 text-terminal-cyan font-mono">
-                <div class="w-2 h-2 bg-terminal-green rounded-full animate-pulse"></div>
-                <span>interactive flowchart on github</span>
-              </div>
-              <div class="text-terminal-comment bg-secondary px-2 py-1 rounded font-mono border border-border">
-                mermaid.js
-              </div>
             </div>
           </div>
         `;
@@ -86,30 +62,72 @@ ${mermaidContent}
         if (codeElement) {
           const codeContent = codeElement.textContent || "";
           block.innerHTML = `
-            <div class="terminal-window my-6">
+            <div class="bg-secondary border border-border rounded my-6 overflow-hidden">
               ${
                 lang && lang !== "text"
                   ? `
-                <div class="terminal-header">
-                  <div class="terminal-controls">
-                    <div class="terminal-dot close"></div>
-                    <div class="terminal-dot minimize"></div>
-                    <div class="terminal-dot maximize"></div>
+                <div class="bg-muted border-b border-border px-4 py-2 flex items-center justify-between">
+                  <div class="flex items-center space-x-3">
+                    <div class="terminal-controls">
+                      <div class="terminal-dot close"></div>
+                      <div class="terminal-dot minimize"></div>
+                      <div class="terminal-dot maximize"></div>
+                    </div>
+                    <span class="text-sm font-mono text-foreground">${lang}</span>
                   </div>
-                  <div class="terminal-title">${lang.toLowerCase()}.sh</div>
-                  <div class="terminal-stats">${
-                    codeContent.split("\\n").length
-                  } lines</div>
+                  <div class="text-xs terminal-comment font-mono">
+                    ${codeContent.split("\\n").length} lines
+                  </div>
                 </div>
               `
                   : ""
               }
-              <div class="terminal-content">
-                <pre class="text-sm text-foreground"><code>${codeContent}</code></pre>
+              <div class="bg-background p-4">
+                <pre class="text-sm text-foreground overflow-x-auto font-mono"><code>${codeContent}</code></pre>
               </div>
             </div>
           `;
         }
+      });
+
+      // Handle image blocks
+      const imageBlocks = previewRef.current.querySelectorAll(".image-block");
+      imageBlocks.forEach((block) => {
+        const src = block.getAttribute("data-src") || "";
+        const alt = block.getAttribute("data-alt") || "";
+        const title = block.getAttribute("data-title") || "";
+
+        block.innerHTML = `
+          <div class="border border-border rounded my-6 overflow-hidden bg-card">
+            <div class="bg-secondary border-b border-border px-4 py-2">
+              <div class="flex items-center space-x-3">
+                <div class="w-6 h-6 bg-terminal-blue/20 border border-terminal-blue rounded flex items-center justify-center">
+                  <svg class="w-3 h-3 terminal-blue" fill="currentColor" viewBox="0 0 20 20">
+                    <path fill-rule="evenodd" d="M4 3a2 2 0 00-2 2v10a2 2 0 002 2h12a2 2 0 002-2V5a2 2 0 00-2-2H4zm12 12H4l4-8 3 6 2-4 3 6z" clip-rule="evenodd"/>
+                  </svg>
+                </div>
+                <div>
+                  <div class="text-sm font-mono text-foreground">${
+                    alt || "Image"
+                  }</div>
+                  <div class="text-xs terminal-comment font-mono">${
+                    src.length > 50 ? src.substring(0, 50) + "..." : src
+                  }</div>
+                </div>
+              </div>
+            </div>
+            <div class="bg-background p-4 text-center">
+              <img 
+                src="${src}" 
+                alt="${alt}" 
+                title="${title}"
+                class="max-w-full h-auto mx-auto rounded border border-border"
+                style="max-height: 400px;"
+                onerror="this.parentElement.innerHTML='<div class=\\"text-center py-8\\"><div class=\\"w-12 h-12 bg-muted border border-border rounded mx-auto flex items-center justify-center mb-3\\"><svg class=\\"w-6 h-6 text-muted-foreground\\" fill=\\"currentColor\\" viewBox=\\"0 0 20 20\\"><path fill-rule=\\"evenodd\\" d=\\"M4 3a2 2 0 00-2 2v10a2 2 0 002 2h12a2 2 0 002-2V5a2 2 0 00-2-2H4zm12 12H4l4-8 3 6 2-4 3 6z\\" clip-rule=\\"evenodd\\"/></svg></div><p class=\\"text-sm text-muted-foreground font-mono\\">Image failed to load</p><p class=\\"text-xs terminal-comment font-mono mt-1\\">${src}</p></div>'"
+              />
+            </div>
+          </div>
+        `;
       });
     }
   }, [content, viewMode]);
@@ -148,8 +166,13 @@ ${mermaidContent}
 
   // Enhanced markdown processing for terminal theme
   const processMarkdown = (text: string) => {
+    // First, strip the outer markdown code block wrapper if it exists
+    const cleanText = text
+      .replace(/^```markdown\n([\s\S]*?)\n```$/m, "$1")
+      .trim();
+
     return (
-      text
+      cleanText
         // Handle Mermaid blocks first
         .replace(
           /```mermaid\n([\s\S]*?)\n```/g,
@@ -159,25 +182,37 @@ ${mermaidContent}
         // Handle other code blocks
         .replace(/```(\w+)?\n([\s\S]*?)\n```/g, (match, lang, code) => {
           const language = lang || "text";
-          return `<div class="code-block" data-lang="${language}"><code>${code}</code></div>`;
+          return `<div class="code-block" data-lang="${language}"><code>${code
+            .replace(/</g, "&lt;")
+            .replace(/>/g, "&gt;")}</code></div>`;
         })
 
-        // Headers with terminal styling
+        // Handle images with proper parsing
         .replace(
-          /^#### (.*$)/gim,
-          '<h4 class="text-lg font-bold mt-6 mb-3 text-terminal-blue font-mono">▸ $1</h4>'
+          /!\[([^\]]*)\]\(([^)\s]+)(?:\s+"([^"]*)")?\)/g,
+          (match, alt, src, title) => {
+            return `<div class="image-block" data-src="${src}" data-alt="${alt}" data-title="${
+              title || ""
+            }"></div>`;
+          }
+        )
+
+        // Headers with terminal styling - fix the regex to handle line breaks properly
+        .replace(
+          /^# (.+)$/gm,
+          '<h1 class="text-3xl font-bold mt-8 mb-8 terminal-green font-mono border-b-2 border-primary pb-4">▓ $1</h1>'
         )
         .replace(
-          /^### (.*$)/gim,
-          '<h3 class="text-xl font-bold mt-8 mb-4 text-terminal-cyan font-mono">▶ $1</h3>'
+          /^## (.+)$/gm,
+          '<h2 class="text-2xl font-bold mt-10 mb-6 terminal-yellow font-mono border-b border-border pb-3">█ $1</h2>'
         )
         .replace(
-          /^## (.*$)/gim,
-          '<h2 class="text-2xl font-bold mt-10 mb-6 text-terminal-yellow font-mono border-b border-border pb-3">█ $1</h2>'
+          /^### (.+)$/gm,
+          '<h3 class="text-xl font-bold mt-8 mb-4 terminal-cyan font-mono">▶ $1</h3>'
         )
         .replace(
-          /^# (.*$)/gim,
-          '<h1 class="text-3xl font-bold mt-8 mb-8 text-terminal-green font-mono border-b-2 border-primary pb-4">▓ $1</h1>'
+          /^#### (.+)$/gm,
+          '<h4 class="text-lg font-bold mt-6 mb-3 terminal-blue font-mono">▸ $1</h4>'
         )
 
         // Enhanced badge handling
@@ -189,43 +224,43 @@ ${mermaidContent}
         // Terminal-styled links
         .replace(
           /\[([^\]]+)\]\(([^)]+)\)/g,
-          '<a href="$2" target="_blank" rel="noopener noreferrer" class="text-terminal-blue hover:text-terminal-cyan underline decoration-2 underline-offset-2 transition-colors font-mono">[$1]</a>'
+          '<a href="$2" target="_blank" rel="noopener noreferrer" class="terminal-blue hover:terminal-cyan underline decoration-2 underline-offset-2 transition-colors font-mono inline-flex items-center gap-1">[$1] <svg class="w-3 h-3" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M10.293 3.293a1 1 0 011.414 0l6 6a1 1 0 010 1.414l-6 6a1 1 0 01-1.414-1.414L14.586 11H3a1 1 0 110-2h11.586l-4.293-4.293a1 1 0 010-1.414z" clip-rule="evenodd"/></svg></a>'
         )
 
         // Text formatting with terminal colors
         .replace(
           /\*\*(.*?)\*\*/g,
-          '<strong class="font-bold text-terminal-green font-mono">$1</strong>'
+          '<strong class="font-bold terminal-green font-mono">$1</strong>'
         )
         .replace(
           /\*(.*?)\*/g,
-          '<em class="italic text-terminal-cyan font-mono">$1</em>'
+          '<em class="italic terminal-cyan font-mono">$1</em>'
         )
         .replace(
           /~~(.*?)~~/g,
-          '<del class="line-through text-terminal-comment font-mono">$1</del>'
+          '<del class="line-through terminal-comment font-mono">$1</del>'
         )
 
         // Inline code with terminal styling
         .replace(
           /`([^`]+)`/g,
-          '<code class="bg-secondary text-terminal-green px-2 py-1 rounded-sm text-sm font-mono border border-border">$1</code>'
+          '<code class="bg-secondary terminal-green px-2 py-1 rounded-sm text-sm font-mono border border-border">$1</code>'
         )
 
-        // Lists with terminal bullets
+        // Lists with terminal bullets - Fix regex for proper list handling
         .replace(
-          /^[\s]*[-*+] (.*$)/gim,
-          '<li class="ml-6 mb-2 text-foreground font-mono list-none relative"><span class="absolute -left-4 text-terminal-green">▸</span>$1</li>'
+          /^[\s]*[-*+] (.+)$/gm,
+          '<li class="ml-6 mb-2 text-foreground font-mono list-none relative"><span class="absolute -left-4 terminal-green">▸</span> $1</li>'
         )
         .replace(
-          /^[\s]*\d+\. (.*$)/gim,
-          '<li class="ml-6 mb-2 text-foreground font-mono list-none relative"><span class="absolute -left-6 text-terminal-yellow font-bold w-4 text-right">$.</span>$1</li>'
+          /^[\s]*(\d+)\. (.+)$/gm,
+          '<li class="ml-6 mb-2 text-foreground font-mono list-none relative"><span class="absolute -left-6 terminal-yellow font-bold w-4 text-right">$1.</span> $2</li>'
         )
 
         // Terminal-styled blockquotes
         .replace(
-          /^> (.*$)/gim,
-          '<blockquote class="border-l-4 border-terminal-blue bg-secondary/50 pl-4 italic text-muted-foreground my-6 py-4 rounded-r font-mono relative"><span class="absolute -left-1 text-terminal-blue text-2xl leading-none">▐</span>$1</blockquote>'
+          /^> (.+)$/gm,
+          '<blockquote class="border-l-4 border-terminal-blue bg-secondary/50 pl-4 italic text-muted-foreground my-6 py-4 rounded-r font-mono relative"><span class="absolute -left-1 terminal-blue text-2xl leading-none">▐</span> $1</blockquote>'
         )
 
         // Terminal horizontal rules
@@ -234,24 +269,31 @@ ${mermaidContent}
           '<hr class="my-8 border-0 h-px bg-gradient-to-r from-transparent via-terminal-green to-transparent">'
         )
 
-        // Tables with terminal styling
-        .replace(/\|(.+)\|/g, (match) => {
-          const cells = match.split("|").filter((cell) => cell.trim() !== "");
-          const cellsHtml = cells
-            .map(
-              (cell) =>
-                `<td class="border border-border px-4 py-2 text-sm font-mono bg-card hover:bg-secondary/50 transition-colors">${cell.trim()}</td>`
-            )
-            .join("");
-          return `<tr class="hover:bg-secondary/30">${cellsHtml}</tr>`;
-        })
+        // Center alignment tags
+        .replace(/<p align="center">/g, '<div class="text-center my-4">')
+        .replace(/<\/p>/g, "</div>")
+        .replace(/<div align="center">/g, '<div class="text-center my-4">')
 
-        // Paragraph breaks with proper spacing
-        .replace(
-          /\n\n/g,
-          '</p><p class="mb-4 text-foreground leading-relaxed font-mono">'
-        )
-        .replace(/\n/g, "<br>")
+        // Handle line breaks and paragraphs properly
+        .split("\n\n")
+        .map((paragraph) => {
+          if (paragraph.trim() === "") return "";
+          if (
+            paragraph.startsWith("<h") ||
+            paragraph.startsWith("<div") ||
+            paragraph.startsWith("<blockquote") ||
+            paragraph.includes("image-block") ||
+            paragraph.includes("code-block") ||
+            paragraph.includes("mermaid-block")
+          ) {
+            return paragraph;
+          }
+          return `<p class="mb-4 text-foreground leading-relaxed font-mono">${paragraph.replace(
+            /\n/g,
+            "<br>"
+          )}</p>`;
+        })
+        .join("\n")
     );
   };
 
@@ -264,11 +306,9 @@ ${mermaidContent}
 
   return (
     <div
-      className={`mx-auto animate-slide-up ${
-        isMaximized ? "fixed inset-4 z-50" : "max-w-6xl"
-      }`}
+      className={`mx-auto ${isMaximized ? "fixed inset-4 z-50" : "max-w-6xl"}`}
     >
-      <div className="terminal-window bg-card shadow-2xl border border-border backdrop-blur-sm">
+      <div className="terminal-window">
         {/* Terminal Header */}
         <div className="terminal-header">
           <div className="flex items-center justify-between w-full">
@@ -276,19 +316,19 @@ ${mermaidContent}
               {/* Terminal controls */}
               <div className="terminal-controls">
                 <button
-                  className="terminal-dot close hover:brightness-110 transition-all"
+                  className="terminal-dot close hover:brightness-110 transition-all flex items-center justify-center"
                   onClick={() => setIsMaximized(false)}
                 >
                   <X className="w-2 h-2 text-background" />
                 </button>
                 <button
-                  className="terminal-dot minimize hover:brightness-110 transition-all"
+                  className="terminal-dot minimize hover:brightness-110 transition-all flex items-center justify-center"
                   onClick={() => setIsMaximized(!isMaximized)}
                 >
                   <Minimize2 className="w-2 h-2 text-background" />
                 </button>
                 <button
-                  className="terminal-dot maximize hover:brightness-110 transition-all"
+                  className="terminal-dot maximize hover:brightness-110 transition-all flex items-center justify-center"
                   onClick={() => setIsMaximized(!isMaximized)}
                 >
                   <Maximize2 className="w-2 h-2 text-background" />
@@ -298,25 +338,22 @@ ${mermaidContent}
               {/* File info */}
               <div className="flex items-center space-x-3">
                 <div className="p-1.5 bg-terminal-green/20 border border-terminal-green rounded">
-                  <FileText className="w-4 h-4 text-terminal-green" />
+                  <FileText className="w-4 h-4 terminal-green" />
                 </div>
                 <div>
-                  <div className="text-sm font-bold text-terminal-green font-mono">
+                  <div className="text-sm font-bold terminal-green font-mono">
                     ~/projects/README.md
                   </div>
-                  <div className="text-xs text-terminal-comment font-mono">
+                  <div className="text-xs terminal-comment font-mono">
                     {stats.words}w • {stats.lines}l • {stats.characters}c
                   </div>
                 </div>
               </div>
             </div>
 
-            {/* Terminal info */}
+            {/* View mode switcher */}
             <div className="flex items-center space-x-4">
-              <div className="text-xs text-terminal-comment font-mono">
-                {currentTime}
-              </div>
-              <div className="flex items-center bg-secondary rounded border border-border">
+              <div className="flex items-center bg-background rounded border border-border">
                 <button
                   onClick={() => setViewMode("preview")}
                   className={`px-3 py-1.5 text-xs font-mono rounded-l transition-all duration-200 flex items-center space-x-2 ${
@@ -347,9 +384,7 @@ ${mermaidContent}
               <button
                 onClick={handleCopy}
                 className={`terminal-button flex items-center space-x-2 px-3 py-1.5 text-xs transition-all duration-200 ${
-                  copied
-                    ? "success"
-                    : "hover:bg-terminal-blue hover:text-background hover:border-terminal-blue"
+                  copied ? "success" : ""
                 }`}
               >
                 {copied ? (
@@ -361,7 +396,7 @@ ${mermaidContent}
               </button>
               <button
                 onClick={handleDownload}
-                className="terminal-button flex items-center space-x-2 px-3 py-1.5 text-xs hover:bg-terminal-cyan hover:text-background hover:border-terminal-cyan transition-all duration-200"
+                className="terminal-button flex items-center space-x-2 px-3 py-1.5 text-xs"
               >
                 <Download className="w-3 h-3" />
                 <span>save</span>
@@ -371,7 +406,7 @@ ${mermaidContent}
         </div>
 
         {/* Content Area */}
-        <div className="terminal-content bg-background relative">
+        <div className="terminal-content">
           <div
             className={`overflow-auto ${
               isMaximized ? "max-h-[calc(100vh-12rem)]" : "max-h-[80vh]"
@@ -380,9 +415,9 @@ ${mermaidContent}
             {viewMode === "preview" ? (
               <div
                 ref={previewRef}
-                className="readme-preview-terminal p-8 max-w-none"
+                className="readme-preview-terminal"
                 dangerouslySetInnerHTML={{
-                  __html: `<div class="mb-4 text-foreground font-mono leading-relaxed">${processedHtml}</div>`,
+                  __html: processedHtml,
                 }}
               />
             ) : (
@@ -390,15 +425,13 @@ ${mermaidContent}
                 {/* Terminal prompt header */}
                 <div className="sticky top-0 bg-secondary px-6 py-3 border-b border-border flex items-center justify-between font-mono">
                   <div className="flex items-center space-x-4">
-                    <div className="flex items-center space-x-2 text-xs text-terminal-comment">
-                      <Terminal className="w-4 h-4 text-terminal-green" />
+                    <div className="flex items-center space-x-2 text-xs terminal-comment">
+                      <Terminal className="w-4 h-4 terminal-green" />
                       <span>user@readmegen:~/project$</span>
-                      <span className="text-terminal-yellow">
-                        cat README.md
-                      </span>
+                      <span className="terminal-yellow">cat README.md</span>
                     </div>
                   </div>
-                  <div className="text-xs text-terminal-comment">
+                  <div className="text-xs terminal-comment">
                     {stats.lines} lines | {stats.words} words |{" "}
                     {stats.characters} chars
                   </div>
@@ -406,14 +439,14 @@ ${mermaidContent}
 
                 <div className="relative">
                   <pre className="p-8 text-sm text-foreground whitespace-pre-wrap font-mono leading-relaxed min-h-full bg-background">
-                    <span className="text-terminal-green">$</span>{" "}
-                    <span className="text-terminal-yellow">cat README.md</span>
+                    <span className="terminal-green">$</span>{" "}
+                    <span className="terminal-yellow">cat README.md</span>
                     {"\n"}
-                    <span className="text-terminal-comment"># Output:</span>
+                    <span className="terminal-comment"># Output:</span>
                     {"\n\n"}
                     {content}
                     {"\n\n"}
-                    <span className="text-terminal-green">$</span>{" "}
+                    <span className="terminal-green">$</span>{" "}
                     <span className="terminal-cursor">_</span>
                   </pre>
                 </div>
@@ -425,9 +458,9 @@ ${mermaidContent}
         {/* Terminal Footer */}
         <div className="terminal-header border-t border-border bg-secondary/50">
           <div className="flex items-center justify-between w-full">
-            <div className="flex items-center space-x-4 text-xs text-terminal-comment font-mono">
+            <div className="flex items-center space-x-4 text-xs terminal-comment font-mono">
               <div className="flex items-center space-x-2">
-                <Github className="w-3 h-3 text-terminal-green" />
+                <Github className="w-3 h-3 terminal-green" />
                 <span>github.com compatible</span>
               </div>
               <div className="w-px h-3 bg-border"></div>
@@ -435,7 +468,7 @@ ${mermaidContent}
               <div className="w-px h-3 bg-border"></div>
               <div>utf-8 encoded</div>
             </div>
-            <div className="flex items-center space-x-2 text-xs text-terminal-comment font-mono">
+            <div className="flex items-center space-x-2 text-xs terminal-comment font-mono">
               <div className="w-2 h-2 bg-terminal-green rounded-full animate-pulse"></div>
               <span>generated with readmegen.ai</span>
             </div>
