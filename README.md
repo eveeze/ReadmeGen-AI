@@ -1,214 +1,236 @@
-# ReadmeGen AI
 
-🚀 **A smart web tool for automatic README.md generation using IBM Granite AI**
 
-Transform your GitHub repositories with AI-generated, professional README files in seconds. Built with Next.js, TypeScript, and powered by IBM Granite AI through Replicate API.
+<h1 align="center">ReadmeGen AI</h1>
 
-## ✨ Features
+<p align="center">🚀 A smart web tool for automatic README.md generation using IBM Granite AI</p>
 
-- 🎯 **Smart Repository Analysis** - Automatically detects programming languages, frameworks, dependencies, and project structure
-- 🤖 **AI-Powered Content Generation** - Uses IBM Granite AI to create comprehensive, professional documentation
-- ⚡ **Lightning Fast** - Generate complete README files in under 30 seconds
-- 👀 **Real-time Preview** - See both rendered markdown and raw source with live switching
-- 📋 **One-Click Copy** - Copy generated markdown to clipboard instantly
-- 📱 **Responsive Design** - Works perfectly on desktop and mobile devices
-- 🎨 **Modern UI** - Clean, intuitive interface built with Tailwind CSS
+<p align="center">Transform your GitHub repositories with AI-generated, professional README files in seconds. Built with Next.js, TypeScript, and powered by IBM Granite AI through the Replicate API.</p>
 
-## 🛠️ Technologies Used
+<div align="center">
 
-- **Frontend**: Next.js 14 with App Router, React 18, TypeScript
-- **Styling**: Tailwind CSS with custom design system
-- **AI Model**: IBM Granite (ibm-granite/granite-3.3-8b-instruct) via Replicate API
-- **APIs**: GitHub API for repository analysis
-- **Deployment**: Optimized for Vercel deployment
-- **Development**: ESLint, TypeScript strict mode
+</div>
 
-## 🚀 Quick Start
+📖 Table of Contents
+--------------------
+
+-   [✨ Features](https://www.google.com/search?q=%23-features)
+
+-   [🛠️ Tech Stack](https://www.google.com/search?q=%23-tech-stack)
+
+-   [🚀 Getting Started](https://www.google.com/search?q=%23-getting-started)
+
+-   [🎯 How It Works](https://www.google.com/search?q=%23-how-it-works)
+
+-   [📁 Project Structure](https://www.google.com/search?q=%23-project-structure)
+
+-   [🔧 Configuration](https://www.google.com/search?q=%23-configuration)
+
+-   [🤝 Contributing](https://www.google.com/search?q=%23-contributing)
+
+-   [📝 License](https://www.google.com/search?q=%23-license)
+
+✨ Features
+----------
+
+-   🎯 **Deep Repository Analysis**: Automatically detects programming languages, frameworks, dependencies, project structure, CI/CD pipelines, testing configurations, and deployment settings.
+
+-   🤖 **AI-Powered Content Generation**: Utilizes IBM Granite AI via the Replicate API to create comprehensive and professional documentation.
+
+-   🤔 **Interactive Mode**: The AI can ask clarifying questions to gather more context and generate a higher-quality README.
+
+-   👀 **Real-time Preview**: Instantly preview the rendered markdown output or view the raw source code.
+
+-   CUSTOMIZATION **Customization**: Easily add custom badges and a logo URL to personalize your README.
+
+-   📜 **Generation History**: Authenticated users can access and view their previously generated READMEs.
+
+-   💻 **Modern Tech Stack**: Built with Next.js 14, React 19, TypeScript, and styled with Tailwind CSS.
+
+🛠️ Tech Stack
+--------------
+
+-   **Frontend**: [Next.js](https://nextjs.org/) 14, [React](https://react.dev/) 19, [TypeScript](https://www.typescriptlang.org/)
+
+-   **Styling**: [Tailwind CSS](https://tailwindcss.com/)
+
+-   **AI Model**: IBM Granite (`ibm-granite/granite-3.3-8b-instruct`) via [Replicate API](https://replicate.com/)
+
+-   **APIs**: [GitHub API](https://docs.github.com/en/rest) for repository analysis
+
+-   **Authentication**: [NextAuth.js](https://next-auth.js.org/)
+
+-   **Database**: [Vercel KV](https://vercel.com/storage/kv) for storing generation history
+
+-   **Deployment**: [Vercel](https://vercel.com/)
+
+🚀 Getting Started
+------------------
+
+Follow these instructions to get a copy of the project up and running on your local machine for development and testing purposes.
 
 ### Prerequisites
 
-- Node.js 18+ and npm
-- Replicate API token ([Get it here](https://replicate.com))
-- GitHub API token (optional, for higher rate limits)
+-   Node.js (v18.0.0 or higher)
+
+-   npm, yarn, or pnpm
 
 ### Installation
 
-1. **Clone the repository**
-   ```bash
-   git clone https://github.com/yourusername/readmegen-ai.git
-   cd readmegen-ai
-   ```
+1.  **Clone the repository**:
 
-2. **Install dependencies**
-   ```bash
-   npm install
-   ```
+    Bash
 
-3. **Set up environment variables**
-   ```bash
-   cp .env.example .env.local
-   ```
-   
-   Edit `.env.local` and add your API tokens:
-   ```env
-   REPLICATE_API_TOKEN=your_replicate_api_token_here
-   GITHUB_TOKEN=your_github_token_here
-   ```
+    ```
+    git clone https://github.com/eveeze/readmegen-ai.git
+    cd readmegen-ai
 
-4. **Run the development server**
-   ```bash
-   npm run dev
-   ```
+    ```
 
-5. **Open your browser**
-   Navigate to [http://localhost:3000](http://localhost:3000)
+2.  **Install dependencies**:
 
-### Available Scripts
+    Bash
 
-- `npm run dev` - Start development server
-- `npm run build` - Build for production
-- `npm run start` - Start production server
-- `npm run lint` - Run ESLint
-- `npm run lint:fix` - Fix ESLint errors automatically
+    ```
+    npm install
 
-## 🎯 How It Works
+    ```
 
-1. **Input**: User enters a GitHub repository URL
-2. **Analysis**: Backend analyzes repository structure using GitHub API
-   - Detects programming languages and frameworks
-   - Identifies package managers and dependencies
-   - Scans for configuration files and scripts
-3. **AI Generation**: Structured data is sent to IBM Granite AI model
-4. **Output**: AI generates comprehensive README with proper sections
-5. **Preview**: User can view rendered markdown or raw source
-6. **Copy**: One-click copy to clipboard for immediate use
+3.  **Set up environment variables**:
 
-## 📁 Project Structure
+    Create a `.env.local` file in the root of your project and add the following variables:
+
+    Cuplikan kode
+
+    ```
+    # Replicate API Token
+    REPLICATE_API_TOKEN=your_replicate_api_token_here
+
+    # GitHub OAuth App Credentials
+    GITHUB_ID=your_github_oauth_app_client_id
+    GITHUB_SECRET=your_github_oauth_app_client_secret
+
+    # Optional: GitHub API Token for higher rate limits
+    GITHUB_TOKEN=your_github_personal_access_token
+
+    # NextAuth Configuration
+    NEXTAUTH_URL=http://localhost:3000
+    NEXTAUTH_SECRET=a_random_secret_string_for_session_encryption
+
+    # Vercel KV Storage (for history feature)
+    KV_URL=your_vercel_kv_storage_url
+    KV_REST_API_URL=your_vercel_kv_rest_api_url
+    KV_REST_API_TOKEN=your_vercel_kv_rest_api_token
+    KV_REST_API_READ_ONLY_TOKEN=your_vercel_kv_rest_api_read_only_token
+
+    ```
+
+4.  **Run the development server**:
+
+    Bash
+
+    ```
+    npm run dev
+
+    ```
+
+5.  **Open your browser** and navigate to [http://localhost:3000](https://www.google.com/search?q=http://localhost:3000).
+
+🎯 How It Works
+---------------
+
+1.  **Input**: The user provides a public GitHub repository URL.
+
+2.  **Analysis**: The backend analyzes the repository using the GitHub API to understand its structure, detect technologies, and identify configurations.
+
+3.  **AI Interaction (Optional)**: If interactive mode is enabled, the AI generates clarifying questions for the user to provide more context.
+
+4.  **AI Generation**: The analysis data (and user answers) are sent to the IBM Granite AI model to generate a comprehensive README.
+
+5.  **Output & Preview**: The generated README is displayed in both rendered markdown and raw source formats for the user to review and copy.
+
+📁 Project Structure
+--------------------
 
 ```
 src/
-├── app/                    # Next.js App Router
-│   ├── api/
-│   │   └── generate/       # README generation API endpoint
-│   ├── globals.css         # Global styles with Tailwind
-│   ├── layout.tsx          # Root layout component
-│   └── page.tsx            # Main page component
+├── app/                      # Next.js App Router
+│   ├── api/                  # API routes
+│   │   ├── auth/
+│   │   ├── generate/
+│   │   └── user-repos/
+│   ├── history/              # Generation history page
+│   ├── globals.css           # Global styles
+│   ├── layout.tsx            # Root layout
+│   └── page.tsx              # Main page
 ├── components/
-│   ├── ui/                 # Reusable UI components
-│   │   ├── button.tsx
-│   │   ├── card.tsx
-│   │   └── input.tsx
-│   ├── LoadingSpinner.tsx  # Loading indicator
-│   ├── ReadmePreview.tsx   # Markdown preview component
-│   └── UrlInput.tsx        # GitHub URL input form
+│   ├── ui/                   # Reusable UI components
+│   └── ...                   # Other components
 ├── lib/
-│   ├── ai.ts              # IBM Granite AI integration
-│   ├── github.ts          # GitHub API client
-│   └── utils.ts           # Utility functions
+│   ├── ai.ts                 # AI integration (IBM Granite)
+│   ├── github.ts             # GitHub API client
+│   └── utils.ts              # Utility functions
 └── types/
-    └── index.ts           # TypeScript type definitions
+    └── index.ts              # TypeScript type definitions
+
 ```
 
-## 🔧 Configuration
+🔧 Configuration
+----------------
 
-### Environment Variables
+The following environment variables are required for the application to function correctly. See the [Installation](https://www.google.com/search?q=%23installation) section for instructions on how to set them up.
 
-| Variable              | Description                              | Required |
-| --------------------- | ---------------------------------------- | -------- |
-| `REPLICATE_API_TOKEN` | Your Replicate API token for IBM Granite | Yes      |
-| `GITHUB_TOKEN`        | GitHub personal access token (optional)  | No       |
+| Variable                      | Description                                                | Required |
+| ----------------------------- | ---------------------------------------------------------- | -------- |
+| `REPLICATE_API_TOKEN`         | Your Replicate API token for the IBM Granite AI model.     | **Yes**  |
+| `GITHUB_ID`                   | Your GitHub OAuth application client ID.                   | **Yes**  |
+| `GITHUB_SECRET`               | Your GitHub OAuth application client secret.               | **Yes**  |
+| `GITHUB_TOKEN`                | A GitHub personal access token for higher API rate limits. | No       |
+| `NEXTAUTH_URL`                | The canonical URL of your Next.js application.             | **Yes**  |
+| `NEXTAUTH_SECRET`             | A secret used to sign and encrypt session data.            | **Yes**  |
+| `KV_URL`                      | Your Vercel KV storage URL.                                | **Yes**  |
+| `KV_REST_API_URL`             | Your Vercel KV REST API URL.                               | **Yes**  |
+| `KV_REST_API_TOKEN`           | Your Vercel KV REST API token.                             | **Yes**  |
+| `KV_REST_API_READ_ONLY_TOKEN` | Your Vercel KV REST API read-only token.                   | **Yes**  |
 
-### API Rate Limits
+🤝 Contributing
+---------------
 
-- **GitHub API**: 60 requests/hour (unauthenticated), 5000/hour (authenticated)
-- **Replicate API**: Depends on your subscription plan
+Contributions are welcome! Please follow these steps to contribute:
 
-## 🚀 Deployment
+1.  **Fork the repository**
 
-### Deploy to Vercel (Recommended)
+2.  **Create a feature branch**:
 
-1. **Connect your repository to Vercel**
-2. **Add environment variables** in Vercel dashboard
-3. **Deploy automatically** on every push to main branch
+    Bash
 
-[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new)
+    ```
+    git checkout -b feature/amazing-feature
 
-### Manual Deployment
+    ```
 
-```bash
-npm run build
-npm run start
-```
+3.  **Make your changes**
 
-## 🤝 Contributing
+4.  **Commit your changes**:
 
-We welcome contributions! Please see our contributing guidelines:
+    Bash
 
-1. **Fork the repository**
-2. **Create a feature branch**
-   ```bash
-   git checkout -b feature/amazing-feature
-   ```
-3. **Make your changes** and add tests if applicable
-4. **Run linting and tests**
-   ```bash
-   npm run lint:fix
-   npm run build
-   ```
-5. **Commit your changes**
-   ```bash
-   git commit -m 'Add some amazing feature'
-   ```
-6. **Push to the branch**
-   ```bash
-   git push origin feature/amazing-feature
-   ```
-7. **Open a Pull Request**
+    ```
+    git commit -m 'Add some amazing feature'
 
-## 📊 Project Stats
+    ```
 
-- **Bundle Size**: Optimized for fast loading
-- **Performance**: Lighthouse score 95+
-- **Accessibility**: WCAG 2.1 AA compliant
-- **SEO**: Fully optimized meta tags and structure
+5.  **Push to the branch**:
 
-## 🐛 Known Issues & Limitations
+    Bash
 
-- Repository must be public (GitHub API limitation)
-- Large repositories may take longer to analyze
-- AI generation quality depends on repository structure and content
-- Rate limits apply to both GitHub and Replicate APIs
+    ```
+    git push origin feature/amazing-feature
 
-## 🔮 Roadmap
+    ```
 
-- [ ] Support for private repositories
-- [ ] Custom README templates
-- [ ] Bulk generation for multiple repositories
-- [ ] Integration with more AI models
-- [ ] Offline mode with cached results
-- [ ] README quality scoring
-- [ ] Multi-language support
+6.  **Open a Pull Request**
 
-## 📝 License
+📝 License
+----------
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
-
-## 🙏 Acknowledgments
-
-- **IBM Granite** - For providing the powerful AI model
-- **GitHub** - For the comprehensive API
-- **Replicate** - For AI model hosting and API
-- **Vercel** - For excellent deployment platform
-- **Next.js Team** - For the amazing framework
-
-## 📞 Support
-
-- 🐛 **Bug Reports**: [Open an issue](https://github.com/yourusername/readmegen-ai/issues)
-- 💡 **Feature Requests**: [Start a discussion](https://github.com/yourusername/readmegen-ai/discussions)
-- 📧 **Contact**: [your-email@example.com](mailto:your-email@example.com)
-
----
-
-⭐ **If this project helped you, please consider giving it a star!**
-
-Built with ❤️ by developers, for developers.
+This project is licensed under the MIT License - see the [LICENSE](https://www.google.com/search?q=https://github.com/eveeze/readmegen-ai/blob/main/LICENSE) file for details.

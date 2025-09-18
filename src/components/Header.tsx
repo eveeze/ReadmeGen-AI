@@ -1,9 +1,10 @@
 "use client";
 
 import Link from "next/link";
+import Image from "next/image"; // Import Image
 import { useSession, signIn, signOut } from "next-auth/react";
 import { Button } from "./ui/button";
-import { LogOut, History, Github, Terminal } from "lucide-react";
+import { LogOut, History, Github } from "lucide-react";
 
 export default function Header() {
   const { data: session, status } = useSession();
@@ -13,16 +14,24 @@ export default function Header() {
       <div className="container mx-auto max-w-6xl py-4 px-4 flex justify-between items-center">
         <Link
           href="/"
-          className="flex items-center space-x-3 group transition-all duration-200"
+          className="flex items-center space-x-4 group transition-all duration-200"
         >
-          <div className="p-2 bg-terminal-green/20 border border-terminal-green rounded terminal-glow">
-            <Terminal className="w-5 h-5 text-terminal-green" />
+          {/* LOGO DIPERBESAR DENGAN PROPORSI YANG BAIK */}
+          <div className="relative h-16 w-16 md:h-20 md:w-20 lg:h-24 lg:w-24">
+            <Image
+              src="/logo.png"
+              alt="Brand Logo"
+              fill
+              sizes="(max-width: 768px) 64px, (max-width: 1024px) 80px, 96px"
+              className="object-contain rounded-lg drop-shadow-sm group-hover:drop-shadow-md transition-all duration-200"
+              priority
+            />
           </div>
-          <div>
-            <span className="text-xl font-bold font-mono text-terminal-green group-hover:text-terminal-cyan transition-colors">
+          <div className="flex flex-col">
+            <span className="text-xl md:text-2xl lg:text-3xl font-bold font-mono text-terminal-green group-hover:text-terminal-cyan transition-colors">
               ReadmeGen.AI
             </span>
-            <div className="text-xs text-terminal-comment font-mono">
+            <div className="text-xs md:text-sm text-terminal-comment font-mono opacity-80">
               terminal v2.0
             </div>
           </div>

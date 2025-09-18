@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useSession } from "next-auth/react";
 import { RepoSelector } from "@/components/RepoSelector";
 import TerminalAnalysisView from "@/components/TerminalAnalysisView";
+import Image from "next/image";
 import {
   ArrowRight,
   Github,
@@ -432,12 +433,12 @@ export default function ImprovedHomePage() {
               <div className="terminal-content p-8">
                 <div className="flex items-center justify-center mb-6">
                   <div className="relative">
-                    <div className="p-4 bg-gradient-to-r from-terminal-green/20 via-terminal-blue/20 to-terminal-cyan/20 rounded-xl border border-terminal-green">
-                      <Terminal className="w-12 h-12 text-terminal-green" />
-                    </div>
-                    <div className="absolute -top-1 -right-1 p-1 bg-terminal-yellow rounded-full">
-                      <Sparkles className="w-4 h-4 text-background" />
-                    </div>
+                    <Image
+                      src="/logo.png"
+                      alt="Brand Logo"
+                      width={150}
+                      height={150}
+                    />
                   </div>
                 </div>
                 <h1 className="text-4xl font-bold mb-4 text-terminal-green font-mono">
