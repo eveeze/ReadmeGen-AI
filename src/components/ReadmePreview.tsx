@@ -97,6 +97,9 @@ ${mermaidContent}
         const alt = block.getAttribute("data-alt") || "";
         const title = block.getAttribute("data-title") || "";
 
+        const altText = alt || "Image";
+        const srcText = src.length > 50 ? src.substring(0, 50) + "..." : src;
+
         block.innerHTML = `
           <div class="border border-border rounded my-6 overflow-hidden bg-card">
             <div class="bg-secondary border-b border-border px-4 py-2">
@@ -107,23 +110,18 @@ ${mermaidContent}
                   </svg>
                 </div>
                 <div>
-                  <div class="text-sm font-mono text-foreground">${
-                    alt || "Image"
-                  }</div>
-                  <div class="text-xs terminal-comment font-mono">${
-                    src.length > 50 ? src.substring(0, 50) + "..." : src
-                  }</div>
+                  <div class="text-sm font-mono text-foreground">${altText}</div>
+                  <div class="text-xs terminal-comment font-mono">${srcText}</div>
                 </div>
               </div>
             </div>
             <div class="bg-background p-4 text-center">
               <img 
                 src="${src}" 
-                alt="${alt}" 
+                alt="${altText}" 
                 title="${title}"
                 class="max-w-full h-auto mx-auto rounded border border-border"
                 style="max-height: 400px;"
-                onerror="this.parentElement.innerHTML='<div class=\\"text-center py-8\\"><div class=\\"w-12 h-12 bg-muted border border-border rounded mx-auto flex items-center justify-center mb-3\\"><svg class=\\"w-6 h-6 text-muted-foreground\\" fill=\\"currentColor\\" viewBox=\\"0 0 20 20\\"><path fill-rule=\\"evenodd\\" d=\\"M4 3a2 2 0 00-2 2v10a2 2 0 002 2h12a2 2 0 002-2V5a2 2 0 00-2-2H4zm12 12H4l4-8 3 6 2-4 3 6z\\" clip-rule=\\"evenodd\\"/></svg></div><p class=\\"text-sm text-muted-foreground font-mono\\">Image failed to load</p><p class=\\"text-xs terminal-comment font-mono mt-1\\">${src}</p></div>'"
               />
             </div>
           </div>
@@ -215,16 +213,20 @@ ${mermaidContent}
           '<h4 class="text-lg font-bold mt-6 mb-3 terminal-blue font-mono">▸ $1</h4>'
         )
 
-        // Enhanced badge handling
         .replace(
           /\[\!\[([^\]]*)\]\(([^)]+)\)\]\(([^)]+)\)/g,
-          '<a href="$3" target="_blank" rel="noopener noreferrer" class="readme-badge inline-block mr-2 mb-2 transition-transform hover:scale-105 terminal-glow"><img src="$2" alt="$1" class="inline-block rounded-sm shadow-sm border border-border" style="max-height: 20px;" /></a>'
+          '<a href="$3" target="_blank" rel="noopener noreferrer" class="inline-block mr-1 mb-1 transition-opacity hover:opacity-80"><img src="$2" alt="$1" class="inline-block rounded-sm" style="max-height: 20px;" /></a>'
+        )
+        // Handle standalone badges (images that look like badges)
+        .replace(
+          /!\[([^\]]*)\]\((https?:\/\/img\.shields\.io[^)]+|https?:\/\/[^)]*badge[^)]*)\)/g,
+          '<img src="$2" alt="$1" class="inline-block mr-1 mb-1 rounded-sm" style="max-height: 20px;" />'
         )
 
         // Terminal-styled links
         .replace(
           /\[([^\]]+)\]\(([^)]+)\)/g,
-          '<a href="$2" target="_blank" rel="noopener noreferrer" class="terminal-blue hover:terminal-cyan underline decoration-2 underline-offset-2 transition-colors font-mono inline-flex items-center gap-1">[$1] <svg class="w-3 h-3" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M10.293 3.293a1 1 0 011.414 0l6 6a1 1 0 010 1.414l-6 6a1 1 0 01-1.414-1.414L14.586 11H3a1 1 0 110-2h11.586l-4.293-4.293a1 1 0 010-1.414z" clip-rule="evenodd"/></svg></a>'
+          '<a href="$2" target="_blank" rel="noopener noreferrer" class="terminal-blue hover:terminal-cyan underline decoration-2 underline-offset-2 transition-colors font-mono inline-flex items-center gap-1">[$1]</a>'
         )
 
         // Text formatting with terminal colors
@@ -273,6 +275,12 @@ ${mermaidContent}
         .replace(/<p align="center">/g, '<div class="text-center my-4">')
         .replace(/<\/p>/g, "</div>")
         .replace(/<div align="center">/g, '<div class="text-center my-4">')
+
+        // Fix standalone badge images and markdown in center divs
+        .replace(
+          /<div class="text-center my-4">\[\!\[([^\]]*)\]\(([^)]+)\)\]<\/div>/g,
+          '<div class="text-center my-4"><img src="$2" alt="$1" class="inline-block" style="max-height: 28px;" /></div>'
+        )
 
         // Handle line breaks and paragraphs properly
         .split("\n\n")

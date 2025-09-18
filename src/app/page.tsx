@@ -95,10 +95,7 @@ export default function ImprovedHomePage() {
     setStep(2);
   };
 
-  const handleGenerate = async () => {
-    // Trigger terminal view immediately
-    setShowTerminalView(true);
-
+  const performGeneration = async () => {
     setGenerationState({
       isLoading: true,
       error: null,
@@ -210,6 +207,28 @@ export default function ImprovedHomePage() {
     }
   };
 
+  const handleGenerate = async () => {
+    // Trigger terminal view immediately
+    setShowTerminalView(true);
+    await performGeneration();
+  };
+
+  const handleReAnalyze = async () => {
+    // Reset all states completely before starting fresh analysis
+    setGenerationState({
+      isLoading: true,
+      error: null,
+      progress: [`$ readmegen --reanalyze --url ${url}`],
+      analysis: null,
+    });
+    setGeneratedReadme("");
+    setQuestions([]);
+    setPendingAnalysis(null);
+
+    // Perform the generation again
+    await performGeneration();
+  };
+
   const handleAnswerSubmit = async (answers: Record<string, string>) => {
     setGenerationState((prev) => ({
       ...prev,
@@ -318,10 +337,6 @@ export default function ImprovedHomePage() {
     setPendingAnalysis(null);
   };
 
-  const handleReAnalyze = () => {
-    handleGenerate();
-  };
-
   const quickBadges = [
     {
       name: "MIT License",
@@ -341,36 +356,51 @@ export default function ImprovedHomePage() {
     },
   ];
 
-  // Show terminal view if triggered
+  // Show terminal view with proper layout structure
   if (showTerminalView) {
     return (
-      <div className="relative min-h-screen">
-        <button
-          onClick={handleBackToHome}
-          className="fixed top-4 left-4 z-50 terminal-button flex items-center space-x-2 px-4 py-2 bg-card/90 backdrop-blur-sm border border-border"
-        >
-          <ArrowLeft className="w-4 h-4" />
-          <span className="font-mono text-sm">back to home</span>
-        </button>
+      <div className="min-h-screen bg-background flex flex-col">
+        {/* Fixed Header with Back Button */}
+        <div className="bg-card border-b border-border px-6 py-4 flex items-center justify-between flex-shrink-0">
+          <button
+            onClick={handleBackToHome}
+            className="terminal-button flex items-center space-x-2 px-4 py-2"
+          >
+            <ArrowLeft className="w-4 h-4" />
+            <span className="font-mono text-sm">back to home</span>
+          </button>
 
-        <TerminalAnalysisView
-          url={url}
-          template={template}
-          language={language}
-          badges={badges}
-          logoUrl={logoUrl}
-          isInteractive={isInteractive}
-          generationState={generationState}
-          generatedReadme={generatedReadme}
-          questions={questions}
-          onReAnalyze={handleReAnalyze}
-          onUrlChange={setUrl}
-          onTemplateChange={setTemplate}
-          onLanguageChange={setLanguage}
-          onLogoUrlChange={setLogoUrl}
-          onInteractiveChange={setIsInteractive}
-          onAnswerSubmit={handleAnswerSubmit}
-        />
+          <div className="flex items-center space-x-3">
+            <Terminal className="w-5 h-5 text-terminal-green" />
+            <span className="font-mono text-terminal-green">
+              ReadmeGen.AI Terminal
+            </span>
+          </div>
+
+          <div className="text-xs text-terminal-comment font-mono">v2.1.0</div>
+        </div>
+
+        {/* Terminal view takes remaining space */}
+        <div className="flex-1 overflow-hidden">
+          <TerminalAnalysisView
+            url={url}
+            template={template}
+            language={language}
+            badges={badges}
+            logoUrl={logoUrl}
+            isInteractive={isInteractive}
+            generationState={generationState}
+            generatedReadme={generatedReadme}
+            questions={questions}
+            onReAnalyze={handleReAnalyze}
+            onUrlChange={setUrl}
+            onTemplateChange={setTemplate}
+            onLanguageChange={setLanguage}
+            onLogoUrlChange={setLogoUrl}
+            onInteractiveChange={setIsInteractive}
+            onAnswerSubmit={handleAnswerSubmit}
+          />
+        </div>
       </div>
     );
   }
